@@ -4,6 +4,7 @@ import base64
 import asyncio
 import time
 from struct import pack
+from bson.objectid import ObjectId
 import motor.motor_asyncio
 from hydrogram.file_id import FileId
 from info import DATABASE_URL, DATABASE_NAME, USE_CAPTION_FILTER
@@ -412,3 +413,36 @@ async def get_actor_search_results(actor_name, tags_list, max_results, offset=0,
     next_offset = offset + max_results if has_more else ""
     
     return results, next_offset
+
+# ─────────────────────────────────────────────────────────
+# 🗑️ ACTOR PROFILE & GALLERY ELEMENT PURGE PIPELINE (NEW UPGRADE)
+# ─────────────────────────────────────────────────────────
+async def delete_actor_profile(actor_id):
+    """डेटाबेस से एक्टर की पूरी प्रोफाइल डिलीट करता है।"""
+    try:
+        res = await actors.delete_one({"_id": ObjectId(actor_id)})
+        return bool(res.deleted_count)
+    except Exception as e:
+        logger.error(f"delete_actor_profile error: {e}")
+        return False
+
+async def delete_gallery_image_by_index(actor_id, index: int):
+    """गैलरी एरे में से स्पेसिफिक इंडेक्स वाली इमेज को पुल (हटा) करता है।"""
+    try:
+        doc = await actors.find_one({"_id": ObjectId(actor_id)})
+        if not doc or "gallery" not in doc:
+            return False
+        
+        gallery = doc["gallery"]
+        if index < 0 or index >= len(gallery):
+            return False
+        
+        target_tg_id = gallery[index]
+        res = await actors.update_one(
+            {"_id": ObjectId(actor_id)},
+            {"$pull": {"gallery": target_tg_id}}
+        )
+        return bool(res.modified_count)
+    except Exception as e:
+        logger.error(f"delete_gallery_image error: {e}")
+        return False
