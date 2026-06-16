@@ -251,9 +251,9 @@ async def actor_profile_display(req):
         </div>
 
         <div class="actor-tab-bar">
-            <button class="actor-tab active" onclick="switchActorTab(event, 'tab-info')">ℹ️ Info</button>
-            <button class="actor-tab" onclick="switchActorTab(event, 'tab-video')">🎬 Video</button>
-            <button class="actor-tab" onclick="switchActorTab(event, 'tab-gallery')">🖼️ Gallery</button>
+            <button class="actor-tab active" onclick="switchActorTab(this, 'tab-info')">ℹ️ Info</button>
+            <button class="actor-tab" onclick="switchActorTab(this, 'tab-video')">🎬 Video</button>
+            <button class="actor-tab" onclick="switchActorTab(this, 'tab-gallery')">🖼️ Gallery</button>
         </div>
 
         <div id="tab-info" class="actor-panel active">
@@ -332,14 +332,14 @@ async def actor_profile_display(req):
         var actCurPage = 1, actOffset = 0, actNextOffset = "";
         var actLimit = 21;
 
-        function switchActorTab(evt, tabId) {{
+        function switchActorTab(btn, tabId) {{
             var panels = document.querySelectorAll('.actor-panel');
             for (var i = 0; i < panels.length; i++) {{ panels[i].classList.remove('active'); }}
             var tabs = document.querySelectorAll('.actor-tab');
             for (var j = 0; j < tabs.length; j++) {{ tabs[j].classList.remove('active'); }}
             
             document.getElementById(tabId).classList.add('active');
-            evt.currentTarget.classList.add('active');
+            btn.classList.add('active');
             if(tabId === 'tab-video' && document.getElementById('actor_video_results').innerHTML === "") {{
                 triggerActorSearchAjax();
             }}
