@@ -22,7 +22,8 @@ async def actors_directory_page(req):
     h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:20px;">'
     for act in all_actors:
         aid = str(act["_id"])
-        v_time = int(float(act.get("created_at", time.time())))
+        # ✅ इमेज फिक्स: टाइमस्टैम्प से स्ट्रिक्ट स्ट्रिंग कैशे बायपास प्रोटोकॉल
+        v_time = str(act.get("created_at", time.time())).replace(".", "")
         h += f'<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;" onclick="location.href=\'/actor/{aid}\'"><div style="position:relative;padding-top:135%;background:var(--bg3);"><img src="/api/actor/photo?id={aid}&v={v_time}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></div><div style="padding:12px;text-align:center;font-size:14px;font-weight:700;color:var(--text);text-overflow:ellipsis;overflow:hidden;white-space:nowrap;">{html.escape(act.get("name",""))}</div></div>'
     h += '</div>' if all_actors else '<div style="color:var(--muted);text-align:center;padding:60px 20px;">🎭 No star profiles created yet.</div>'
 
@@ -36,36 +37,9 @@ async def actors_directory_page(req):
 async def create_actor_page(req):
     role, _ = await get_auth(req)
     if role != 'admin': return web.HTTPFound('/dashboard')
-    
-    content = '''
-    <form action="/api/create_actor" method="post" enctype="multipart/form-data">
-        <input type="text" name="name" placeholder="Actor Full Name (e.g. Shah Rukh Khan)" required>
-        <textarea name="bio" placeholder="Biography Details..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;min-height:100px;margin-bottom:15px;font-family:inherit;" required></textarea>
-        
-        <div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Search Tags (Comma Separated)</div>
-        <input type="text" name="tags" placeholder="e.g. SRK, Shahrukh" style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;">
-        
-        <div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Instagram Profile Link</div>
-        <input type="url" name="insta" placeholder="https://instagram.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;">
-        
-        <div class="scard-label" style="margin-bottom:4px;color:var(--muted);">YouTube Channel Link</div>
-        <input type="url" name="yt" placeholder="https://youtube.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;">
-        
-        <div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Twitter / X Profile Link</div>
-        <input type="url" name="twitter" placeholder="https://x.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;">
-
-        <div class="scard-label" style="margin-bottom:8px;color:var(--muted);">Profile Photo</div>
-        <input type="file" name="photo" accept="image/*" required style="color:var(--text);margin-bottom:15px;"><br>
-        
-        <button class="submit-btn" type="submit">Create Actor Profile</button>
-    </form>
-    <div style="margin-top:15px;text-align:center;"><a href="/actors" style="color:var(--muted);text-decoration:none;font-size:13px;">← Back to Catalog</a></div>
-    '''
+    content = '<form action="/api/create_actor" method="post" enctype="multipart/form-data"><input type="text" name="name" placeholder="Actor Full Name" required><textarea name="bio" placeholder="Biography Details..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;min-height:100px;margin-bottom:15px;font-family:inherit;" required></textarea><div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Search Tags (Comma Separated)</div><input type="text" name="tags" placeholder="e.g. SRK, Shahrukh" style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;"><div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Instagram Link</div><input type="url" name="instagram" placeholder="https://instagram.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;"><div class="scard-label" style="margin-bottom:4px;color:var(--muted);">YouTube Link</div><input type="url" name="youtube" placeholder="https://youtube.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;"><div class="scard-label" style="margin-bottom:4px;color:var(--muted);">Twitter / X Link</div><input type="url" name="twitter" placeholder="https://x.com/..." style="width:100%;background:var(--bg3);border:1px solid var(--border);padding:12px;color:var(--text);border-radius:6px;margin-bottom:15px;"><div class="scard-label" style="margin-bottom:8px;color:var(--muted);">Profile Photo</div><input type="file" name="photo" accept="image/*" required style="color:var(--text);margin-bottom:15px;"><button class="submit-btn" type="submit">Create Actor Profile</button></form><div style="margin-top:15px;text-align:center;"><a href="/actors" style="color:var(--muted);text-decoration:none;font-size:13px;">← Back to Catalog</a></div>'
     return build_page("Create Actor Profile", form_wrapper("Add New Actor", content, req.query.get('err',''), req.query.get('msg','')), "login-bg", "actors", role)
 
-# ─────────────────────────────────────────────────────────
-# ⚙️ ADMIN API: CREATE ACTOR ROUTE GATEWAY
-# ─────────────────────────────────────────────────────────
 @actor_routes.post('/api/create_actor')
 async def api_create_actor(req):
     if (await get_auth(req))[0] != 'admin': return web.json_response({"error":"Unauthorized"}, status=403)
@@ -78,8 +52,8 @@ async def api_create_actor(req):
             if p.name == 'name': name = (await p.read()).decode().strip()
             elif p.name == 'bio': bio = (await p.read()).decode().strip()
             elif p.name == 'tags': tags_raw = (await p.read()).decode().strip()
-            elif p.name == 'insta': insta = (await p.read()).decode().strip()
-            elif p.name == 'yt': yt = (await p.read()).decode().strip()
+            elif p.name == 'instagram': insta = (await p.read()).decode().strip()
+            elif p.name == 'youtube': yt = (await p.read()).decode().strip()
             elif p.name == 'twitter': twitter = (await p.read()).decode().strip()
             elif p.name == 'photo': img_bytes = await p.read()
         if not name or not bio or not img_bytes: return web.HTTPFound('/admin/create_actor?err=Missing fields')
@@ -89,40 +63,9 @@ async def api_create_actor(req):
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=buf)
         fid = msg.photo.sizes[-1].file_id if hasattr(msg.photo,"sizes") and msg.photo.sizes else msg.photo.file_id
         
-        await actors.insert_one({
-            "name": name, "bio": bio, "tags": [t.strip() for t in tags_raw.split(",") if t.strip()],
-            "photo_url": f"TG_ID:{fid}", "social_links": {"instagram": insta, "youtube": yt, "twitter": twitter},
-            "gallery": [], "created_at": time.time()
-        })
+        await actors.insert_one({"name":name,"bio":bio,"tags":[t.strip() for t in tags_raw.split(",") if t.strip()],"photo_url":f"TG_ID:{fid}","social_links":{"instagram":insta,"youtube":yt,"twitter":twitter},"gallery":[],"created_at":time.time()})
         return web.HTTPFound('/actors?msg=Success')
     except Exception as e: return web.HTTPFound(f'/admin/create_actor?err={str(e)}')
-
-# ─────────────────────────────────────────────────────────
-# 🖼️ PHOTO SERVE ENGINE
-# ─────────────────────────────────────────────────────────
-@actor_routes.get('/api/actor/photo')
-async def get_actor_photo(req):
-    actor_id = req.query.get("id")
-    img_index = req.query.get("gallery_idx")
-    if not actor_id: return web.Response(status=400)
-    try:
-        doc = await actors.find_one({"_id": ObjectId(actor_id)})
-        if not doc: return web.Response(status=404)
-        if img_index is not None:
-            raw_url = doc.get("gallery", [])[int(img_index)]
-        else:
-            raw_url = doc.get("photo_url")
-        if not raw_url or not raw_url.startswith("TG_ID:"): return web.Response(status=404)
-        tg_id = raw_url.replace("TG_ID:", "")
-        buf = io.BytesIO()
-        await temp.BOT.download_media(tg_id, file_name=buf)
-        buf.seek(0)
-        body_bytes = buf.read()
-        buf.close()
-        if not body_bytes: return web.Response(status=404)
-        return web.Response(body=body_bytes, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
-    except Exception: return web.Response(status=500)
-    finally: gc.collect()
 
 # ─────────────────────────────────────────────────────────
 # 🌐 PUBLIC VIEW: ACTOR PROFILE MASTER INTERFACE
@@ -143,7 +86,7 @@ async def actor_profile_display(req):
     gallery_list = act.get("gallery", [])
     t_payload = html.escape(json.dumps(act.get("tags", [])))
     
-    v_time = int(float(act.get("created_at", time.time())))
+    v_time = str(act.get("created_at", time.time())).replace(".", "")
     chips = "".join([f'<span style="background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600;margin-right:4px;margin-bottom:4px;">#{html.escape(t)}</span>' for t in act.get("tags",[])])
     
     soc_html = ""
@@ -158,7 +101,7 @@ async def actor_profile_display(req):
             del_b = f'<button class="gallery-del-btn" onclick="deleteGalleryImage(\'{aid}\',{i},event)">🗑️ Delete</button>' if role=='admin' else ""
             gal_html += f'<div class="gallery-item-wrap" onclick="openLightbox(\'/api/actor/photo?id={aid}&gallery_idx={i}\')"><img src="/api/actor/photo?id={aid}&gallery_idx={i}" class="gallery-item" loading="lazy">{del_b}</div>'
         gal_html += '</div>'
-    else: gal_html += '<div style="color:var(--muted);text-align:center;padding:40px;">🖼️ Gallery is empty.</div>'
+    else: gal_html += '<div style="color:var(--muted);text-align:center;padding:40px;"> 🖼️ Gallery is empty.</div>'
 
     adm_act = f'<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;"><button onclick="openActorEditModal()" style="background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Edit Profile</button><button onclick="deleteActorProfile(\'{aid}\')" style="background:rgba(160,8,8,.78);border:1px solid rgba(229,9,20,.45);color:#fff;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🗑️ Delete Profile</button><label style="background:var(--bg3);border:1px dashed var(--border);color:var(--text);padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">📸 Change Avatar<input type="file" id="avatarUpdateInput" accept="image/*" style="display:none;" onchange="updateActorAvatar(\'{aid}\')"></label></div>' if role=='admin' else ""
 
@@ -280,7 +223,7 @@ async def actor_profile_display(req):
     <input type="hidden" id="actor_master_tags_payload" value="{t_payload}">
 
     <div class="edit-modal" id="actorEditModal" onclick="if(event.target===this)closeActorEditModal()">
-        <div class="em-card" style="max-width:550px;background:var(--card);border:1px solid var(--border);padding:25px;border-radius:12px;">
+        <div class="em-card" style="max-width:550px;background:var(--card);border:1px solid var(--border);padding:25px;border-radius:12px;z-index:100000 !important;">
             <button class="em-close" onclick="closeActorEditModal()" style="position:absolute;top:15px;right:20px;background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;">&#10005;</button>
             <div class="em-title" style="font-size:18px;font-weight:700;margin-bottom:20px;color:var(--text);">✏️ Edit Actor Profile Matrix</div>
             <form action="/api/actor/update_profile" method="post">
