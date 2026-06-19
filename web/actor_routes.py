@@ -1,4 +1,5 @@
-import io, gc, time, json, html, re
+import io, gc, time, html, re
+import orjson
 from aiohttp import web
 from bson.objectid import ObjectId
 from utils import temp, get_size
@@ -8,6 +9,13 @@ from database.ia_filterdb import actors, get_actor_search_results
 from web.web_assets import build_page, get_auth, form_wrapper
 
 actor_routes = web.RouteTableDef()
+
+# ─────────────────────────────────────────────────────────
+# ⚡ ULTRA-FAST ORJSON DUMP FUNCTION
+# ─────────────────────────────────────────────────────────
+def fast_json(data):
+    """orjson बाइट्स (bytes) में डेटा देता है, aiohttp के लिए इसे स्ट्रिंग में डिकोड करना होता है"""
+    return orjson.dumps(data).decode('utf-8')
 
 # ─────────────────────────────────────────────────────────
 # 🌐 MAIN HOMEPAGE: UNIVERSAL DIRECTORY WITH SEARCH & FILTERS
@@ -200,7 +208,7 @@ async def actors_directory_page(req):
 @actor_routes.get('/api/directory/search')
 async def api_directory_search(req):
     role, _ = await get_auth(req)
-    if not role: return web.json_response({"html": ""})
+    if not role: return web.json_response({"html": ""}, dumps=fast_json)
     
     q = req.query.get("q", "").strip()
     cat = req.query.get("cat", "all")
@@ -224,7 +232,7 @@ async def api_directory_search(req):
     docs = docs[:lim]
     
     if not docs:
-        return web.json_response({"html": '<div style="grid-column:1/-1; color:var(--muted); text-align:center; padding:60px 20px;">📇 No profiles matching your filters found.</div>', "has_next": False})
+        return web.json_response({"html": '<div style="grid-column:1/-1; color:var(--muted); text-align:center; padding:60px 20px;">📇 No profiles matching your filters found.</div>', "has_next": False}, dumps=fast_json)
         
     html_out = ""
     if mode == "text":
@@ -239,7 +247,7 @@ async def api_directory_search(req):
             v = int(a.get("photo_updated_at") or a.get("created_at") or 0)
             html_out += f'''<div class="act-card" onclick="window.location.href=\'/actor/{str(a["_id"])}\'"><div style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;"><img src="/api/actor/photo?id={str(a["_id"])}&v={v}" class="act-poster" loading="lazy"><div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.1); color:#fff; font-size:9px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2;">{i} {c.capitalize()}</div></div><div style="padding:10px; text-align:center;"><div style="font-size:13px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{html.escape(a.get("name", ""))}</div></div></div>'''
             
-    return web.json_response({"html": html_out, "has_next": has_next})
+    return web.json_response({"html": html_out, "has_next": has_next}, dumps=fast_json)
 
 
 # ─────────────────────────────────────────────────────────
@@ -255,7 +263,7 @@ async def create_actor_page(req):
 @actor_routes.post('/api/create_actor')
 async def api_create_actor(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     try:
         reader = await req.multipart()
         name, bio, tags_raw, image_bytes, category = None, None, "", None, "actor"
@@ -345,7 +353,7 @@ async def actor_profile_display(req):
 
     admin_actions_html = f'''<div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;"><button onclick="openActorEditModal()" style="background:var(--bg4); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">✏️ Edit Profile & Socials</button><button onclick="deleteActorProfile('{actor_id}')" style="background:rgba(160,8,8,.78); border:1px solid rgba(229,9,20,.45); color:#fff; padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">🗑️ Delete Profile</button><label style="background:var(--bg3); border:1px dashed var(--border); color:var(--text); padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-block;">📸 Change Avatar<input type="file" id="avatarUpdateInput" accept="image/*" style="display:none;" onchange="updateActorAvatar('{actor_id}')"></label></div>''' if role == 'admin' else ""
         
-    tags_json_payload = html.escape(json.dumps(tags_list))
+    tags_json_payload = html.escape(fast_json(tags_list))
     safe_bio = html.escape(actor.get("bio", ""))
     photo_v = int(actor.get("photo_updated_at") or actor.get("created_at") or 0)
     
@@ -364,20 +372,20 @@ async def actor_profile_display(req):
 @actor_routes.get('/api/actor/search')
 async def api_actor_search_handler(req):
     role, _ = await get_auth(req)
-    if not role: return web.json_response({"error": "Unauthorized"}, status=403)
+    if not role: return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     actor_id, q_custom = req.query.get("id"), req.query.get("q", "").strip()
     off, col, mode = req.query.get("offset", "0"), req.query.get("col", "all").lower(), req.query.get("mode", "tg").lower()
     
-    if not actor_id: return web.json_response({"results": []})
+    if not actor_id: return web.json_response({"results": []}, dumps=fast_json)
     try: off = max(0, int(off))
     except: off = 0
         
     actor = await actors.find_one({"_id": ObjectId(actor_id)})
-    if not actor: return web.json_response({"results": []})
+    if not actor: return web.json_response({"results": []}, dumps=fast_json)
     
     tags_list = actor.get("tags", [])
     search_query, final_tags = (q_custom, []) if q_custom else (tags_list[0] if tags_list else "", tags_list)
-    if not search_query: return web.json_response({"results": [], "next_offset": ""})
+    if not search_query: return web.json_response({"results": [], "next_offset": ""}, dumps=fast_json)
         
     # ✅ FIX: हार्डकोडेड 21 की जगह MAX_WEB_RESULTS का इस्तेमाल किया गया है
     lim = MAX_WEB_RESULTS
@@ -390,7 +398,7 @@ async def api_actor_search_handler(req):
         "watch": f"/setup_stream?file_id={d.get('file_ref') or d.get('_id')}&mode=watch"
     } for d in all_m]
         
-    return web.json_response({"results": results_list, "next_offset": next_offset})
+    return web.json_response({"results": results_list, "next_offset": next_offset}, dumps=fast_json)
 
 # ─────────────────────────────────────────────────────────
 # ⚙️ PROFILE: UPDATE PROFILE DATA
@@ -398,7 +406,7 @@ async def api_actor_search_handler(req):
 @actor_routes.post('/api/actor/update_profile')
 async def api_actor_update_profile(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     
     d = await req.post()
     actor_id, name, bio = d.get('actor_id'), d.get('name', '').strip(), d.get('bio', '').strip()
@@ -417,21 +425,21 @@ async def api_actor_update_profile(req):
 @actor_routes.post('/api/actor/update_avatar')
 async def api_actor_update_avatar(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     try:
         data = await req.post()
-        if not data.get("actor_id") or not data.get("photo"): return web.json_response({"success": False, "error": "Invalid assets data"})
+        if not data.get("actor_id") or not data.get("photo"): return web.json_response({"success": False, "error": "Invalid assets data"}, dumps=fast_json)
             
         with io.BytesIO(data.get("photo").file.read()) as img_buffer:
             img_buffer.name = f"avatar_{data.get('actor_id')}_{int(time.time())}.jpg"
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
             
-        if not msg or not msg.photo: return web.json_response({"success": False, "error": "Telegram upload failed"})
+        if not msg or not msg.photo: return web.json_response({"success": False, "error": "Telegram upload failed"}, dumps=fast_json)
         tg_photo_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
         
         await actors.update_one({"_id": ObjectId(data.get("actor_id"))}, {"$set": {"photo_url": f"TG_ID:{tg_photo_id}", "photo_updated_at": int(time.time())}})
-        return web.json_response({"success": True, "photo_updated_at": int(time.time())})
-    except Exception as e: return web.json_response({"success": False, "error": str(e)})
+        return web.json_response({"success": True, "photo_updated_at": int(time.time())}, dumps=fast_json)
+    except Exception as e: return web.json_response({"success": False, "error": str(e)}, dumps=fast_json)
 
 # ─────────────────────────────────────────────────────────
 # ⚙️ PROFILE: GALLERY UPLOAD
@@ -439,7 +447,7 @@ async def api_actor_update_avatar(req):
 @actor_routes.post('/api/actor/gallery_upload')
 async def api_actor_gallery_upload(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     try:
         reader = await req.multipart()
         actor_id, image_bytes = None, None
@@ -467,18 +475,18 @@ async def api_actor_gallery_upload(req):
 @actor_routes.post('/api/actor/gallery_delete')
 async def api_actor_gallery_delete(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
     try:
         body = await req.json()
         actor = await actors.find_one({"_id": ObjectId(body.get("actor_id"))})
-        if not actor or "gallery" not in actor: return web.json_response({"success": False, "error": "Actor not found"})
+        if not actor or "gallery" not in actor: return web.json_response({"success": False, "error": "Actor not found"}, dumps=fast_json)
         gallery = actor["gallery"]
         if 0 <= body.get("index") < len(gallery):
             del gallery[body.get("index")]
             await actors.update_one({"_id": ObjectId(body.get("actor_id"))}, {"$set": {"gallery": gallery}})
-            return web.json_response({"success": True})
-        return web.json_response({"success": False, "error": "Index out of bounds"})
-    except Exception as e: return web.json_response({"success": False, "error": str(e)})
+            return web.json_response({"success": True}, dumps=fast_json)
+        return web.json_response({"success": False, "error": "Index out of bounds"}, dumps=fast_json)
+    except Exception as e: return web.json_response({"success": False, "error": str(e)}, dumps=fast_json)
 
 # ─────────────────────────────────────────────────────────
 # ⚙️ PROFILE: DELETE WHOLE PROFILE
@@ -486,9 +494,9 @@ async def api_actor_gallery_delete(req):
 @actor_routes.post('/api/actor/delete')
 async def api_actor_delete(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403)
-    if not req.query.get("id"): return web.json_response({"error": "Missing ID"}, status=400)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
+    if not req.query.get("id"): return web.json_response({"error": "Missing ID"}, status=400, dumps=fast_json)
     try:
         await actors.delete_one({"_id": ObjectId(req.query.get("id"))})
-        return web.json_response({"success": True})
-    except Exception as e: return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"success": True}, dumps=fast_json)
+    except Exception as e: return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
