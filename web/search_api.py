@@ -8,7 +8,8 @@ import hashlib
 import asyncio
 import logging
 import urllib.parse
-from collections import OrderedDict
+import orjson
+from lru import LRU
 from aiohttp import web
 
 # कस्टमाइज्ड कोर यूटिल्स और कन्फर्म कंट्रोल्स इम्पोर्ट्स
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 search_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────────────────
+# ⚡ ULTRA-FAST ORJSON DUMP FUNCTION
+# ─────────────────────────────────────────────────────────
+def fast_json(data):
+    """orjson बाइट्स (bytes) में डेटा देता है, aiohttp के लिए इसे स्ट्रिंग में डिकोड करना होता है"""
+    return orjson.dumps(data).decode('utf-8')
+
+# ─────────────────────────────────────────────────────────
 # 🔤 STRICT SEARCH QUERY BUILDER (From Version 2)
 # ─────────────────────────────────────────────────────────
 def _build_strict_query(q: str) -> str:
@@ -35,16 +43,16 @@ def _build_strict_query(q: str) -> str:
     return " ".join(f'"{w}"' for w in clean.split())
 
 # ─────────────────────────────────────────────────────────
-# 📸 TRUE LRU THUMBNAIL STORAGE & CONCURRENCY SYSTEM
+# 📸 TRUE LRU THUMBNAIL STORAGE (C-Based LRU-Dict)
 # ─────────────────────────────────────────────────────────
 MAX_CACHE = MAX_THUMB_CACHE
 thumb_semaphore = asyncio.Semaphore(15)
-thumb_cache = OrderedDict()  # {cache_key: bytes | "NO_THUMB"}
+thumb_cache = LRU(MAX_CACHE)  # ✅ C-लेंग्वेज आधारित सुपरफास्ट कैशे (Size Fixed)
 thumb_locks = {}
 
 # KOYEB OPTIMIZATION: Limits reduced to 40 to protect 512MB RAM limits
-PREFETCH_CACHE = OrderedDict()  
-TRENDING_CACHE = OrderedDict()  
+PREFETCH_CACHE = LRU(40)  
+TRENDING_CACHE = LRU(40)  
 TRENDING_CACHE_TTL = 300
 
 # ─────────────────────────────────────────────────────────
@@ -54,11 +62,11 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
     cache_key = f"{col_name}:{fid}"
 
     if is_retry:
-        if thumb_cache.get(cache_key) == "NO_THUMB":
-            thumb_cache.pop(cache_key, None)
+        if cache_key in thumb_cache and thumb_cache[cache_key] == "NO_THUMB":
+            del thumb_cache[cache_key]
 
     if cache_key in thumb_cache:
-        thumb_cache.move_to_end(cache_key)
+        # lru-dict में एक्सेस करते ही यह ऑटोमैटिकली "recently used" बन जाता है
         cached_val = thumb_cache[cache_key]
         return None if cached_val == "NO_THUMB" else cached_val
 
@@ -67,14 +75,11 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
     try:
         async with lock:
             if cache_key in thumb_cache:
-                thumb_cache.move_to_end(cache_key)
                 cached_val = thumb_cache[cache_key]
                 return None if cached_val == "NO_THUMB" else cached_val
 
             async def _fetch():
-                if len(thumb_cache) >= MAX_CACHE:
-                    thumb_cache.popitem(last=False)
-
+                # 🚀 lru-dict अपने आप पुरानी फाइल्स उड़ा देता है, हमें मैन्युअली popitem() की ज़रूरत नहीं!
                 target_collection = COLLECTIONS.get(col_name, COLLECTIONS["primary"])
                 existing = await target_collection.find_one({"_id": fid}, {"thumb_url": 1})
 
@@ -150,9 +155,7 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
 
         if docs:
             PREFETCH_CACHE[cache_key] = (docs, next_off)
-            if len(PREFETCH_CACHE) > 40:  # Koyeb RAM safe limit
-                PREFETCH_CACHE.popitem(last=False)
-
+            
             if mode != "none":
                 warmup_docs = docs if tg_id in ADMINS else docs[:5]
                 for doc in warmup_docs:
@@ -181,7 +184,7 @@ def verify_telegram_init_data(init_data: str) -> dict | None:
         if not hmac.compare_digest(expected_hash, received_hash):
             return None
         user_str = parsed.get("user", "{}")
-        return json.loads(user_str)
+        return json.loads(user_str) # initData parsing uses standard json
     except Exception:
         return None
 
@@ -209,15 +212,15 @@ async def get_user_role(req):
 
 
 # ─────────────────────────────────────────────────────────
-# 🔍 SEARCH API — Smart Pre-fetch Grid Engine
+# 🔍 SEARCH API — Smart Pre-fetch Grid Engine (orjson dumps)
 # ─────────────────────────────────────────────────────────
 @search_routes.get("/api/search")
 async def api_search(req):
     role, tg_id = await get_user_role(req)
     if not role:
-        return web.json_response({"error": "Unauthorized Access!"}, status=403)
+        return web.json_response({"error": "Unauthorized Access!"}, status=403, dumps=fast_json)
     if is_rate_limited(tg_id, "web_search", 1):
-        return web.json_response({"error": "Spam Protection: Searching too fast!"}, status=429)
+        return web.json_response({"error": "Spam Protection: Searching too fast!"}, status=429, dumps=fast_json)
 
     q = req.query.get("q", "").strip()
     off = req.query.get("offset", "0")
@@ -225,7 +228,7 @@ async def api_search(req):
     mode = req.query.get("mode", "tg").lower()
 
     if not q:
-        return web.json_response({"results": [], "total": 0, "next_offset": ""})
+        return web.json_response({"results": [], "total": 0, "next_offset": ""}, dumps=fast_json)
     try:
         off = max(0, int(off))
     except Exception:
@@ -247,14 +250,15 @@ async def api_search(req):
                 "total": off + len(cached["results"]) + (1 if cached["next_offset"] else 0),
                 "next_offset": cached["next_offset"],
                 "is_admin": role == "admin"
-            })
+            }, dumps=fast_json)
 
     current_cache_key = f"{tg_id}_{q}_{col}_{mode}_{off}"
     all_m = []
     next_offset = ""
 
     if current_cache_key in PREFETCH_CACHE:
-        all_m, next_offset = PREFETCH_CACHE.pop(current_cache_key)
+        all_m, next_offset = PREFETCH_CACHE[current_cache_key]
+        del PREFETCH_CACHE[current_cache_key]
 
     if not all_m:
         strict_q = _build_strict_query(q)
@@ -303,15 +307,13 @@ async def api_search(req):
             "next_offset": next_offset,
             "expiry": time.time() + TRENDING_CACHE_TTL
         }
-        if len(TRENDING_CACHE) > 40:  # Koyeb RAM safe limit
-            TRENDING_CACHE.popitem(last=False)
 
     return web.json_response({
         "results": results_list,
         "total": off + len(results_list) + (1 if has_more else 0),
         "next_offset": next_offset,
         "is_admin": role == "admin",
-    })
+    }, dumps=fast_json)
 
 
 # ─────────────────────────────────────────────────────────
@@ -363,7 +365,7 @@ async def setup_stream(req):
 async def setup_stream_post(req):
     role, _ = await get_user_role(req)
     if not role:
-        return web.json_response({"error": "Unauthorized Web Access!"}, status=403)
+        return web.json_response({"error": "Unauthorized Web Access!"}, status=403, dumps=fast_json)
     try:
         data = await req.json()
         fid = data.get("file_id")
@@ -372,15 +374,15 @@ async def setup_stream_post(req):
         fid = req.query.get("file_id")
         mode = req.query.get("mode", "watch")
     if not fid:
-        return web.json_response({"error": "Missing file_id!"}, status=400)
+        return web.json_response({"error": "Missing file_id!"}, status=400, dumps=fast_json)
     try:
         msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
         await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 3600)
         if mode == "watch":
             await db.track_video_play()
-        return web.json_response({"url": f"/{'download' if mode == 'download' else 'watch'}/{msg.id}"})
+        return web.json_response({"url": f"/{'download' if mode == 'download' else 'watch'}/{msg.id}"}, dumps=fast_json)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
 
 
 # ─────────────────────────────────────────────────────────
@@ -390,24 +392,24 @@ async def setup_stream_post(req):
 async def api_delete(req):
     role, _ = await get_user_role(req)
     if role != "admin":
-        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403, dumps=fast_json)
     try:
         data = await req.json()
         fid = data.get("file_id")
         col = data.get("collection", "primary").lower()
         if col not in COLLECTIONS:
-            return web.json_response({"error": "Invalid target collection!"}, status=400)
+            return web.json_response({"error": "Invalid target collection!"}, status=400, dumps=fast_json)
         res = await COLLECTIONS[col].delete_one({"_id": fid})
-        return web.json_response({"success": bool(res.deleted_count)})
+        return web.json_response({"success": bool(res.deleted_count)}, dumps=fast_json)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
 
 
 @search_routes.post("/api/edit_name")
 async def api_edit_name(req):
     role, _ = await get_user_role(req)
     if role != "admin":
-        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403, dumps=fast_json)
     try:
         data = await req.json()
         fid = data.get("file_id")
@@ -418,12 +420,12 @@ async def api_edit_name(req):
         target_col = data.get("target_collection", col).lower() # ट्रांसफर लोकेशन
 
         if not fid or col not in COLLECTIONS or target_col not in COLLECTIONS:
-            return web.json_response({"error": "Missing structural inputs!"}, status=400)
+            return web.json_response({"error": "Missing structural inputs!"}, status=400, dumps=fast_json)
 
         # 1. डेटाबेस से पुरानी फाइल का डेटा निकालें
         doc = await COLLECTIONS[col].find_one({"_id": fid})
         if not doc:
-            return web.json_response({"error": "File not found in database!"}, status=404)
+            return web.json_response({"error": "File not found in database!"}, status=404, dumps=fast_json)
 
         update_fields = {}
         if new_name:
@@ -456,10 +458,10 @@ async def api_edit_name(req):
         PREFETCH_CACHE.clear()
         TRENDING_CACHE.clear()
 
-        return web.json_response({"success": True})
+        return web.json_response({"success": True}, dumps=fast_json)
     except Exception as e:
         logger.error(f"Edit/Transfer Error: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
 
 
 # ─────────────────────────────────────────────────────────
@@ -469,7 +471,7 @@ async def api_edit_name(req):
 async def api_upload_thumb(req):
     role, _ = await get_user_role(req)
     if role != "admin":
-        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+        return web.json_response({"error": "Core Admin Authorization Required!"}, status=403, dumps=fast_json)
     try:
         reader = await req.multipart()
         file_id_field, collection_field, image_bytes = None, None, None
@@ -485,18 +487,20 @@ async def api_upload_thumb(req):
                 image_bytes = await part.read()
 
         if not file_id_field or not collection_field or not image_bytes:
-            return web.json_response({"error": "Missing required assets!"}, status=400)
+            return web.json_response({"error": "Missing required assets!"}, status=400, dumps=fast_json)
         if collection_field not in COLLECTIONS:
-            return web.json_response({"error": "Target collection missing!"}, status=400)
+            return web.json_response({"error": "Target collection missing!"}, status=400, dumps=fast_json)
 
-        thumb_cache.pop(f"{collection_field}:{file_id_field}", None)
+        cache_k = f"{collection_field}:{file_id_field}"
+        if cache_k in thumb_cache:
+            del thumb_cache[cache_k]
 
         with io.BytesIO(image_bytes) as img_buffer:
             img_buffer.name = "poster.jpg"
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
 
         if not msg or not msg.photo:
-            return web.json_response({"error": "Telegram Node failed!"}, status=500)
+            return web.json_response({"error": "Telegram Node failed!"}, status=500, dumps=fast_json)
 
         try:
             new_thumb_id = (
@@ -517,18 +521,18 @@ async def api_upload_thumb(req):
         PREFETCH_CACHE.clear()
         TRENDING_CACHE.clear()
 
-        return web.json_response({"success": True})
+        return web.json_response({"success": True}, dumps=fast_json)
 
     except Exception as e:
         logger.error(f"❌ Upload thumb endpoint crash: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
 
 # ✅ ADDED: REAL-TIME DATABASE STORAGE MONITORING API
 @search_routes.get("/api/db_stats")
 async def api_db_stats(req):
     role, _ = await get_user_role(req)
     if role != "admin":
-        return web.json_response({"error": "Admin Authorization Required!"}, status=403)
+        return web.json_response({"error": "Admin Authorization Required!"}, status=403, dumps=fast_json)
     
     try:
         stats = await filter_db.command("dbstats")
@@ -542,9 +546,9 @@ async def api_db_stats(req):
             "used": get_size(used_bytes),
             "total": "512.0 MB",
             "percent": min(round(percent, 2), 100) 
-        })
+        }, dumps=fast_json)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"error": str(e)}, status=500, dumps=fast_json)
 
 
 @search_routes.get("/miniapp")
