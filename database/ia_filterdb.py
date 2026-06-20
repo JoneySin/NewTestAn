@@ -105,7 +105,7 @@ async def db_count_documents():
 # ─────────────────────────────────────────────────────────
 # 💾 SAVE FILE
 # ─────────────────────────────────────────────────────────
-async def save_file(media, collection_type="primary"):
+async def save_file(media, message_id=None, chat_id=None, collection_type="primary"):
     try:
         file_id = unpack_new_file_id(media.file_id)
         if not file_id: return "err"
@@ -124,6 +124,11 @@ async def save_file(media, collection_type="primary"):
             thumb_url = None
 
         update_set = {"file_ref":  media.file_id, "file_name": f_name, "file_size": media.file_size, "file_type": file_type}
+        
+        # ✅ सपोर्ट ग्रुप और चैनल सिंक के लिए message_id और chat_id सेव करना
+        if message_id: update_set["message_id"] = message_id
+        if chat_id: update_set["chat_id"] = chat_id
+        
         if thumb_url: update_set["thumb_url"] = thumb_url
 
         update_payload = {"$set": update_set}
@@ -169,7 +174,7 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
         text_flt = {"$text": {"$search": strict_query}}
         if lang: text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-        cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
+        cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "message_id": 1, "chat_id": 1, "score": {"$meta": "textScore"}})
         cursor.sort([("score", {"$meta": "textScore"})])
         cursor.skip(offset).limit(limit)
         docs = await cursor.to_list(length=limit)
@@ -182,7 +187,7 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]} if USE_CAPTION_FILTER else {"file_name": regex}
     if lang: reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
+    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "message_id": 1, "chat_id": 1}).sort('_id', -1)
     cursor.skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
     for doc in docs: doc["file_id"] = doc["_id"]
@@ -251,7 +256,7 @@ async def delete_files(query, collection_type="all"):
 async def get_file_details(file_id):
     try:
         for col in [primary, cloud, archive]:
-            doc = await col.find_one({"_id": file_id}, {"_id": 1, "file_name": 1, "file_size": 1, "file_ref": 1, "caption": 1, "thumb_url": 1})
+            doc = await col.find_one({"_id": file_id}, {"_id": 1, "file_name": 1, "file_size": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "message_id": 1, "chat_id": 1})
             if doc:
                 doc["file_id"] = doc["_id"]  
                 return doc
@@ -308,7 +313,7 @@ async def get_actor_search_results(actor_name, tags_list, max_results, offset=0,
     cols = [primary, cloud, archive] if collection_type == "all" else [COLLECTIONS.get(collection_type, primary)]
     
     for col in cols:
-        cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
+        cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "message_id": 1, "chat_id": 1}).sort('_id', -1)
         cursor.skip(offset).limit(max_results)
         docs = await cursor.to_list(length=max_results)
         if docs:
