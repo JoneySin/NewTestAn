@@ -45,13 +45,18 @@ CARD_CSS = """
 
 /* ── Custom dropdown ── */
 .cdd-wrap{flex:0 1 auto;min-width:0;position:relative;user-select:none}
-/* ✅ FIX: Width is now fixed to 170px to stop the button from shaking/resizing */
 .cdd-btn{width:170px;background:var(--bg3);color:var(--text);border:1.5px solid var(--border);border-radius:999px;padding:8px 28px 8px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,box-shadow .15s}
 .cdd-btn:hover,.cdd-btn.open{border-color:var(--accent);box-shadow:0 0 0 3px rgba(229,9,20,0.12)}
 .cdd-arrow{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--muted);transition:transform .2s}
 .cdd-btn.open+.cdd-arrow{transform:translateY(-50%) rotate(180deg)}
+
+/* ✅ FIX: Animation now includes translate(-50%) to prevent the menu from shifting horizontally when it opens */
 .cdd-menu{position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);min-width:max-content;background:var(--bg2,var(--bg3));border:1.5px solid var(--border);border-radius:16px;overflow:hidden;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.45);animation:cddIn .15s ease}
-@keyframes cddIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes cddIn{
+    from{opacity:0;transform:translate(-50%, -6px)}
+    to{opacity:1;transform:translate(-50%, 0)}
+}
+
 .cdd-item{display:flex;align-items:center;gap:10px;padding:13px 14px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
 .cdd-item:last-child{border-bottom:none}
 .cdd-item:hover{background:var(--bg3)}
@@ -407,7 +412,6 @@ function handleLocalPreview(input){
 
 async function saveAllChanges(){
     var newName=document.getElementById('emName').value.trim();
-    // टैग्स और ड्रॉपडाउन की वैल्यू पढ़ें
     var addCaption=document.getElementById('emAddCaption') ? document.getElementById('emAddCaption').value.trim() : '';
     var moveCol=document.getElementById('emMoveCol') ? document.getElementById('emMoveCol').value : activeCol;
 
@@ -431,7 +435,6 @@ async function saveAllChanges(){
         }
         showToast('\\ud83d\\udcbe Updating DB & Collection...');
         
-        // पेलोड जिसमें टैग्स और कलेक्शन मूवमेंट का डेटा भी है
         var payload = {
             file_id: activeFid,
             collection: activeCol,
@@ -447,15 +450,12 @@ async function saveAllChanges(){
             showToast('\\u2728 File updated successfully!');
             closeCombinedModal();
             
-            // अगर फाइल किसी दूसरे कलेक्शन में मूव हुई है, तो पूरा ग्रिड रिफ्रेश करें
             if(activeCol !== moveCol) {
                 doSearch(curOff);
             } else {
-                // अगर सिर्फ नाम या टैग ऐड हुआ है, तो बिना हिले सिर्फ टेक्स्ट अपडेट करें
                 reloadThumb(activeFid, activeCol);
                 var titleEl = document.getElementById('name-title-' + activeFid);
                 if(titleEl) { titleEl.textContent = newName; }
-                // चुपचाप बैकग्राउंड में सर्च रिफ्रेश कर सकते हैं ताकि अगला क्लिक सही डेटा उठाए
                 doSearch(curOff);
             }
         }else{showToast(res.error||'Metadata save failed!','error');}
