@@ -45,7 +45,8 @@ CARD_CSS = """
 
 /* ── Custom dropdown ── */
 .cdd-wrap{flex:0 1 auto;min-width:0;position:relative;user-select:none}
-.cdd-btn{width:auto;background:var(--bg3);color:var(--text);border:1.5px solid var(--border);border-radius:999px;padding:8px 28px 8px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,box-shadow .15s}
+/* ✅ FIX: Width is now fixed to 170px to stop the button from shaking/resizing */
+.cdd-btn{width:170px;background:var(--bg3);color:var(--text);border:1.5px solid var(--border);border-radius:999px;padding:8px 28px 8px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,box-shadow .15s}
 .cdd-btn:hover,.cdd-btn.open{border-color:var(--accent);box-shadow:0 0 0 3px rgba(229,9,20,0.12)}
 .cdd-arrow{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--muted);transition:transform .2s}
 .cdd-btn.open+.cdd-arrow{transform:translateY(-50%) rotate(180deg)}
@@ -255,7 +256,6 @@ async function doSearch(o){
 
             var adminBtns='';
             if(d.is_admin){
-                // ✅ नया बदलाव: safeCaption को भी लाया गया है
                 var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 var safeCaption=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 adminBtns='<div class="poster-admin">'+
@@ -285,7 +285,6 @@ async function doSearch(o){
                     '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
                 if(d.is_admin){
-                    // ✅ नया बदलाव: safeCaption2 को text-mode के लिए भी सेट किया
                     var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                     var safeCaption2=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                     textInfo+='<div class="text-admin-row">'+
@@ -340,7 +339,6 @@ async function deleteFile(fid,col){
     }catch(e){showToast('Delete failed','error');}
 }
 
-// ✅ नया बदलाव: currentCaption को receive करने के लिए function को अपडेट किया
 function editFile(fid, col, currentName, currentCaption){
     activeFid = fid; 
     activeCol = col;
