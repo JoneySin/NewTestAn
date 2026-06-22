@@ -17,8 +17,9 @@ from Script import script
 logger = logging.getLogger(__name__)
 
 BUTTONS = {}
-SRC_TO_SHORT = {"primary": "pri", "cloud": "cld", "archive": "arc"}
-SHORT_TO_SRC = {"pri": "primary", "cld": "cloud", "arc": "archive"}
+# ✅ डिक्शनरी में 'all' की-वैल्यू जोड़ी गई ताकि कंबाइंड सोर्स क्रैश न हो
+SRC_TO_SHORT = {"primary": "pri", "cloud": "cld", "archive": "arc", "all": "all"}
+SHORT_TO_SRC = {"pri": "primary", "cld": "cloud", "arc": "archive", "all": "all"}
 
 # ⚡ स्मार्ट डिक्शनरी जो चालू टाइमर्स को ट्रैक करेगी ताकि रिसेट किया जा सके
 ACTIVE_DELETE_TASKS = {}
@@ -109,7 +110,13 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
            f"📄 Page: {curr_page}/{total_pages}</b>\n\n{files_text}")
 
     btn = []
-    act_src_short = SRC_TO_SHORT.get(act_src, "pri")
+    
+    # ⚡ अगर सोर्स कंबाइंड है (जैसे Primary+Cloud) तो पेजिनेशन 'all' में होगा
+    act_src_lower = act_src.lower()
+    if "+" in act_src_lower or act_src_lower == "all":
+        act_src_short = "all"
+    else:
+        act_src_short = SRC_TO_SHORT.get(act_src_lower, "pri")
 
     nav = []
     prev_off = int(offset) - MAX_BOT_RESULTS
@@ -125,12 +132,11 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     if not simple_mode:
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
-            tick = "✅" if c == act_src else "📂"
+            # ✅ जो कलेक्शन शामिल हैं, उन पर ग्रीन टिक लगाएँ
+            tick = "✅" if c in act_src_lower else "📂"
             col_btn.append(InlineKeyboardButton(f"{tick} {c.title()}", callback_data=f"coll_{req_id}_{key}_{SRC_TO_SHORT[c]}"))
         btn.append(col_btn)
         btn.append([InlineKeyboardButton("❌ Close Result", callback_data=f"close_{req_id}")])
-    else:
-        pass
     
     return cap, InlineKeyboardMarkup(btn) if btn else None
 
@@ -368,8 +374,9 @@ async def pagination_handler(client, query):
     search = BUTTONS.get(key)
     if not search: return await query.answer("❌ Search Expired!", show_alert=True)
 
+    # ✅ Default fallback changed to "all" to support multi-collection scrolling 
     offset, coll_short = (int(data[3]), data[4]) if action == "nav" else (0, data[3])
-    coll_type = SHORT_TO_SRC.get(coll_short, "primary")
+    coll_type = SHORT_TO_SRC.get(coll_short, "all")
 
     files, next_off, total, act_src = await get_search_results(search, MAX_BOT_RESULTS, offset, collection_type=coll_type)
     
