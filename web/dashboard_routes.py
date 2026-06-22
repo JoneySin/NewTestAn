@@ -254,9 +254,11 @@ async function doSearch(o){
 
             var adminBtns='';
             if(d.is_admin){
+                // ✅ नया बदलाव: safeCaption को भी लाया गया है
                 var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                var safeCaption=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
+                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\', \\''+safeCaption+'\\')">&#9999; Edit</button>'+
                     '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                 '</div>';
             }
@@ -282,9 +284,11 @@ async function doSearch(o){
                     '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
                 if(d.is_admin){
+                    // ✅ नया बदलाव: safeCaption2 को text-mode के लिए भी सेट किया
                     var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                    var safeCaption2=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                     textInfo+='<div class="text-admin-row">'+
-                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
+                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\', \\''+safeCaption2+'\\')">&#9999; Edit</button>'+
                         '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                     '</div>';
                 }
@@ -335,7 +339,8 @@ async function deleteFile(fid,col){
     }catch(e){showToast('Delete failed','error');}
 }
 
-function editFile(fid, col, currentName){
+// ✅ नया बदलाव: currentCaption को receive करने के लिए function को अपडेट किया
+function editFile(fid, col, currentName, currentCaption){
     activeFid = fid; 
     activeCol = col;
     if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
@@ -348,7 +353,7 @@ function editFile(fid, col, currentName){
     if(!document.getElementById('emAddCaption')) {
         var extraHtml = `
             <div style="margin-top:14px; text-align:left;">
-                <label style="font-size:12px;color:var(--accent);font-weight:700;">➕ Add Search Tags to Caption (Optional)</label>
+                <label style="font-size:12px;color:var(--accent);font-weight:700;">➕ Edit Search Tags / Caption</label>
                 <input type="text" id="emAddCaption" placeholder="e.g. Ajay Devgan, 1080p, Comedy..." style="width:100%;padding:10px;margin-top:6px;border-radius:8px;background:var(--bg3);border:1.5px solid var(--border);color:var(--text);font-family:inherit;box-sizing:border-box;">
             </div>
             <div style="margin-top:14px; margin-bottom:12px; text-align:left;">
@@ -363,10 +368,10 @@ function editFile(fid, col, currentName){
         emNameInput.insertAdjacentHTML('afterend', extraHtml);
     }
 
-    // करंट कलेक्शन को सिलेक्ट बॉक्स में सेट करें और टैग्स इनपुट खाली करें
+    // करंट कलेक्शन को सिलेक्ट बॉक्स में सेट करें और टैग्स इनपुट में पुराना कैप्शन भरें
     if(document.getElementById('emMoveCol')) {
         document.getElementById('emMoveCol').value = col;
-        document.getElementById('emAddCaption').value = ''; 
+        document.getElementById('emAddCaption').value = currentCaption || ''; 
     }
 
     var prevBox=document.getElementById('emPreviewBox');
@@ -403,7 +408,7 @@ function handleLocalPreview(input){
 
 async function saveAllChanges(){
     var newName=document.getElementById('emName').value.trim();
-    // नया: टैग्स और ड्रॉपडाउन की वैल्यू पढ़ें
+    // टैग्स और ड्रॉपडाउन की वैल्यू पढ़ें
     var addCaption=document.getElementById('emAddCaption') ? document.getElementById('emAddCaption').value.trim() : '';
     var moveCol=document.getElementById('emMoveCol') ? document.getElementById('emMoveCol').value : activeCol;
 
@@ -427,7 +432,7 @@ async function saveAllChanges(){
         }
         showToast('\\ud83d\\udcbe Updating DB & Collection...');
         
-        // नया पेलोड जिसमें टैग्स और कलेक्शन मूवमेंट का डेटा भी है
+        // पेलोड जिसमें टैग्स और कलेक्शन मूवमेंट का डेटा भी है
         var payload = {
             file_id: activeFid,
             collection: activeCol,
@@ -451,6 +456,8 @@ async function saveAllChanges(){
                 reloadThumb(activeFid, activeCol);
                 var titleEl = document.getElementById('name-title-' + activeFid);
                 if(titleEl) { titleEl.textContent = newName; }
+                // चुपचाप बैकग्राउंड में सर्च रिफ्रेश कर सकते हैं ताकि अगला क्लिक सही डेटा उठाए
+                doSearch(curOff);
             }
         }else{showToast(res.error||'Metadata save failed!','error');}
     }catch(e){showToast('Network synchronization error','error');}
