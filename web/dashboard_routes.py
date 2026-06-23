@@ -96,20 +96,6 @@ CARD_CSS = """
 .cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
 .archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
 
-/* ── Poster bottom row: Edit | Delete (admin only) ── */
-.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none;z-index:4}
-.file-card.admin-active .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
-/* text-only admin row */
-.text-admin-row{display:none;gap:5px;padding:5px 11px 0}
-.file-card.admin-active .text-admin-row{display:flex}
-.btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
-.btn-edit{background:rgba(42,42,48,.90);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.18)}
-.btn-edit:hover{background:rgba(80,80,88,.95)}
-.btn-edit:active{transform:scale(.93)}
-.btn-del{background:rgba(160,8,8,.78);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(229,9,20,.45)}
-.btn-del:hover{background:rgba(229,9,20,.92)}
-.btn-del:active{transform:scale(.93)}
-
 /* ── Card body ── */
 .fc-body{padding:10px 11px 12px}
 .fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;transition:color .18s;text-decoration:none}
@@ -144,8 +130,6 @@ JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
 var pMode=localStorage.getItem('posterMode')||'tg';
 var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
-
-var activeFid = '', activeCol = '', cropperInstance = null;
 
 function closeCdds(){
     document.getElementById('cddColMenu').style.display='none';
@@ -212,28 +196,7 @@ function handleThumbError(fileId) {
     }
 }
 
-async function reloadThumb(fileId, col) {
-    var timestamp = new Date().getTime();
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) {
-        img.src = '/api/thumb?file_id=' + fileId + '&col=' + col + '&retry=true&t=' + timestamp;
-        img.classList.remove('loaded');
-    }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (errBox) { errBox.remove(); }
-}
-
 function triggerRipple(btn){btn.classList.remove('ripple-go');void btn.offsetWidth;btn.classList.add('ripple-go');setTimeout(function(){btn.classList.remove('ripple-go');},460);}
-
-function toggleAdminBtns(card,e){
-    e.stopPropagation();
-    var isActive=card.classList.contains('admin-active');
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
-    if(!isActive){card.classList.add('admin-active');}
-}
-document.addEventListener('click',function(){
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
-});
 
 async function doSearch(o){
     var q=document.getElementById('q').value.trim();
@@ -259,7 +222,6 @@ async function doSearch(o){
             var sc=(f.source||'primary').toLowerCase();
             if(!['primary','cloud','archive'].includes(sc))sc='primary';
 
-            // ✅ SOLUTION: URL Encoding avoids ALL special characters, quotes, and newlines breaking the onclick!
             var encName = encodeURIComponent(f.name || '').replace(/'/g, "%27").replace(/"/g, "%22");
             var encCap = encodeURIComponent(f.caption || '').replace(/'/g, "%27").replace(/"/g, "%22");
 
@@ -322,8 +284,6 @@ async function doSearch(o){
 
 function next(){if(nextOff){curPage++;doSearch(nextOff);scrollTo(0,0);}}
 function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-LIMIT_VAL));scrollTo(0,0);}}
-var _tt;
-function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
 
 document.addEventListener('DOMContentLoaded',function(){
     var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
@@ -333,139 +293,6 @@ document.addEventListener('DOMContentLoaded',function(){
         document.getElementById('cddModeLabel').textContent='\u26a1 Text Only (Fastest)';
     }
 });
-
-async function deleteFile(fid,col){
-    if(!confirm('Are you sure you want to delete this file?'))return;
-    try{
-        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        if(res.success){showToast('\\u2705 File deleted successfully!');doSearch(curOff);}
-        else{showToast(res.error||'Delete failed!','error');}
-    }catch(e){showToast('Delete failed','error');}
-}
-
-function editFile(fid, col, encName, encCaption){
-    // ✅ SOLUTION: Decoding URL encoded safe strings back into original characters
-    var currentName = decodeURIComponent(encName);
-    var currentCaption = decodeURIComponent(encCaption);
-
-    activeFid = fid; 
-    activeCol = col;
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-    document.getElementById('emName').value=currentName;
-    document.getElementById('emFile').value='';
-    document.getElementById('cropContainer').style.display='none';
-
-    // 🌟 MAGIC: एडिट पैनल में नए इनपुट फील्ड्स को ऑटोमैटिकली इंजेक्ट करना
-    var emNameInput = document.getElementById('emName');
-    if(!document.getElementById('emAddCaption')) {
-        var extraHtml = `
-            <div style="margin-top:14px; text-align:left;">
-                <label style="font-size:12px;color:var(--accent);font-weight:700;">➕ Edit Search Tags / Caption</label>
-                <input type="text" id="emAddCaption" placeholder="e.g. Ajay Devgan, 1080p, Comedy..." style="width:100%;padding:10px;margin-top:6px;border-radius:8px;background:var(--bg3);border:1.5px solid var(--border);color:var(--text);font-family:inherit;box-sizing:border-box;">
-            </div>
-            <div style="margin-top:14px; margin-bottom:12px; text-align:left;">
-                <label style="font-size:12px;color:var(--accent);font-weight:700;">📂 Move File to Collection</label>
-                <select id="emMoveCol" style="width:100%;padding:10px;margin-top:6px;border-radius:8px;background:var(--bg3);border:1.5px solid var(--border);color:var(--text);font-family:inherit;font-weight:600;box-sizing:border-box;">
-                    <option value="primary">🟢 Primary</option>
-                    <option value="cloud">🔵 Cloud</option>
-                    <option value="archive">🟠 Archive</option>
-                </select>
-            </div>
-        `;
-        emNameInput.insertAdjacentHTML('afterend', extraHtml);
-    }
-
-    // करंट कलेक्शन को सिलेक्ट बॉक्स में सेट करें और टैग्स इनपुट में पुराना कैप्शन भरें
-    if(document.getElementById('emMoveCol')) {
-        document.getElementById('emMoveCol').value = col;
-        document.getElementById('emAddCaption').value = currentCaption || ''; 
-    }
-
-    var prevBox=document.getElementById('emPreviewBox');
-    prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
-    document.getElementById('editCombinedModal').classList.add('open');
-}
-
-function closeCombinedModal(){
-    document.getElementById('editCombinedModal').classList.remove('open');
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-}
-
-function handleLocalPreview(input){
-    if(input.files&&input.files[0]){
-        var reader=new FileReader();
-        reader.onload=function(e){
-            if(cropperInstance){cropperInstance.destroy();}
-            document.getElementById('emPreviewBox').style.display='none';
-            var cropWrap=document.getElementById('cropContainer');
-            cropWrap.style.display='block';
-            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
-            var img=document.getElementById('cropImage');
-            cropperInstance=new Cropper(img,{
-                aspectRatio:16/9,viewMode:1,dragMode:'move',background:false,
-                autoCropArea:1,restore:false,guides:false,center:true,highlight:false,
-                cropBoxMovable:false,cropBoxResizable:false,toggleDragModeOnDblclick:false,
-                zoomable:true,movable:true
-            });
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
-async function saveAllChanges(){
-    var newName=document.getElementById('emName').value.trim();
-    var addCaption=document.getElementById('emAddCaption') ? document.getElementById('emAddCaption').value.trim() : '';
-    var moveCol=document.getElementById('emMoveCol') ? document.getElementById('emMoveCol').value : activeCol;
-
-    if(!newName){showToast('File name cannot be empty!','error');return;}
-    var btn=document.getElementById('emSaveBtn');
-    btn.disabled=true;btn.innerText='Processing pipeline...';
-    try{
-        if(cropperInstance){
-            showToast('\\u2702\\ufe0f Cropping & Uploading to Telegram...');
-            var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
-            var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
-            if(blob){
-                var formData=new FormData();
-                formData.append('file_id',activeFid);
-                formData.append('collection',activeCol);
-                formData.append('image',blob,'cropped_poster.jpg');
-                var upRes=await fetch('/api/upload_thumb',{method:'POST',body:formData});
-                var upData=await upRes.json();
-                if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
-            }
-        }
-        showToast('\\ud83d\\udcbe Updating DB & Collection...');
-        
-        var payload = {
-            file_id: activeFid,
-            collection: activeCol,
-            new_name: newName,
-            add_caption: addCaption,
-            target_collection: moveCol
-        };
-
-        var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify(payload),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        
-        if(res.success||cropperInstance){
-            showToast('\\u2728 File updated successfully!');
-            closeCombinedModal();
-            
-            if(activeCol !== moveCol) {
-                doSearch(curOff);
-            } else {
-                reloadThumb(activeFid, activeCol);
-                var titleEl = document.getElementById('name-title-' + activeFid);
-                if(titleEl) { titleEl.textContent = newName; }
-                doSearch(curOff);
-            }
-        }else{showToast(res.error||'Metadata save failed!','error');}
-    }catch(e){showToast('Network synchronization error','error');}
-    finally{btn.disabled=false;btn.innerText='Save Changes';}
-}
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
