@@ -259,12 +259,14 @@ async function doSearch(o){
             var sc=(f.source||'primary').toLowerCase();
             if(!['primary','cloud','archive'].includes(sc))sc='primary';
 
+            // ✅ SOLUTION: URL Encoding avoids ALL special characters, quotes, and newlines breaking the onclick!
+            var encName = encodeURIComponent(f.name || '').replace(/'/g, "%27").replace(/"/g, "%22");
+            var encCap = encodeURIComponent(f.caption || '').replace(/'/g, "%27").replace(/"/g, "%22");
+
             var adminBtns='';
             if(d.is_admin){
-                var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                var safeCaption=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\', \\''+safeCaption+'\\')">&#9999; Edit</button>'+
+                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+encName+'\\', \\''+encCap+'\\')">&#9999; Edit</button>'+
                     '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                 '</div>';
             }
@@ -290,10 +292,8 @@ async function doSearch(o){
                     '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
                 if(d.is_admin){
-                    var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                    var safeCaption2=(f.caption||'').replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                     textInfo+='<div class="text-admin-row">'+
-                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\', \\''+safeCaption2+'\\')">&#9999; Edit</button>'+
+                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+encName+'\\', \\''+encCap+'\\')">&#9999; Edit</button>'+
                         '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                     '</div>';
                 }
@@ -344,7 +344,11 @@ async function deleteFile(fid,col){
     }catch(e){showToast('Delete failed','error');}
 }
 
-function editFile(fid, col, currentName, currentCaption){
+function editFile(fid, col, encName, encCaption){
+    // ✅ SOLUTION: Decoding URL encoded safe strings back into original characters
+    var currentName = decodeURIComponent(encName);
+    var currentCaption = decodeURIComponent(encCaption);
+
     activeFid = fid; 
     activeCol = col;
     if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
