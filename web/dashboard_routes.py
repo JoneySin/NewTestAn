@@ -6,7 +6,7 @@ from utils import temp
 dashboard_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎨 NEW CARD UI CSS — With Smooth Fade-In & Shimmer Effect
+# 🎨 DASHBOARD SPECIFIC CSS (सिर्फ सर्च बार और ड्रॉपडाउन के लिए, कार्ड्स ग्लोबल हैं)
 # ─────────────────────────────────────────────────────────────────────────────
 CARD_CSS = """
 <style>
@@ -50,7 +50,6 @@ CARD_CSS = """
 .cdd-arrow{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--muted);transition:transform .2s}
 .cdd-btn.open+.cdd-arrow{transform:translateY(-50%) rotate(180deg)}
 
-/* ✅ FIX: Animation now includes translate(-50%) to prevent the menu from shifting horizontally when it opens */
 .cdd-menu{position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);min-width:max-content;background:var(--bg2,var(--bg3));border:1.5px solid var(--border);border-radius:16px;overflow:hidden;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.45);animation:cddIn .15s ease}
 @keyframes cddIn{
     from{opacity:0;transform:translate(-50%, -6px)}
@@ -65,66 +64,11 @@ CARD_CSS = """
 .cdd-item.selected .cdd-radio{border-color:var(--accent)}
 .cdd-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:none}
 .cdd-item.selected .cdd-radio-dot{display:block}
-
-/* ── Results grid ── */
-.res-grid{display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:24px}
-@media(min-width:600px){.res-grid{grid-template-columns:repeat(3,1fr);gap:14px}}
-.res-grid.mode-none .poster-box{display:none}
-
-/* ── File card ── */
-.file-card{background:var(--card);border-radius:6px;overflow:hidden;border:1px solid var(--border);transition:transform .22s cubic-bezier(.4,0,.2,1),box-shadow .22s,border-color .22s;cursor:pointer}
-.file-card:hover{transform:translateY(-4px);border-color:rgba(229,9,20,.4);box-shadow:0 14px 36px rgba(0,0,0,.6),0 0 0 1px rgba(229,9,20,.2)}
-
-/* ── Poster box (With Shimmer Effect) ── */
-.poster-box{position:relative;padding-top:56.25%;background:linear-gradient(90deg, var(--bg3) 0px, var(--bg4) 50%, var(--bg3) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite linear;overflow:hidden}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.fc-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.25s ease-in-out, transform 0.35s ease}
-.fc-poster.loaded{opacity:1}
-.file-card:hover .fc-poster{transform:scale(1.05)}
-.thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f;z-index:2}
-
-/* ── Poster top row: Type · Size · Source ── */
-.poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px;z-index:3}
-.type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
-.size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
-.source-pill{margin-left:auto;border-radius:20px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.4px;display:inline-flex;align-items:center;gap:4px;backdrop-filter:blur(8px)}
-.source-pill.primary{background:#14532d;color:#4ade80;border:1px solid #22c55e}
-.source-pill.cloud{background:#1e3a5f;color:#93c5fd;border:1px solid #60a5fa}
-.source-pill.archive{background:#7c2d12;color:#fdba74;border:1px solid #fb923c}
-.source-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.primary .source-dot{background:#22c55e;box-shadow:0 0 4px #22c55e}
-.cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
-.archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
-
-/* ── Card body ── */
-.fc-body{padding:10px 11px 12px}
-.fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;transition:color .18s;text-decoration:none}
-.fc-name:hover{color:var(--accent);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:2px}
-
-/* ── Text-only mode info row ── */
-.fc-text-info{display:flex;align-items:center;gap:6px;padding:10px 11px 0;flex-wrap:wrap;margin-bottom:4px}
-.tc-type{background:var(--bg4);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:9px;font-weight:800;letter-spacing:.8px;border:1px solid var(--border)}
-.tc-size{color:var(--muted);font-size:11px}
-
-/* ── Pagination ── */
-.pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
-.pg-btn{background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,transform .15s,box-shadow .15s}
-.pg-btn:disabled{background:var(--bg3);color:var(--muted);cursor:not-allowed;opacity:.45}
-.pg-btn:not(:disabled):hover{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 4px 16px rgba(229,9,20,.35)}
-.pg-btn:not(:disabled):active{transform:scale(.93);box-shadow:none}
-.pg-info{color:var(--muted);font-size:12px;font-weight:600}
-
-/* ── Empty / Loading ── */
-.empty{text-align:center;padding:60px 20px;color:var(--muted)}
-.empty-icon{font-size:36px;margin-bottom:12px}
-.spin-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:60px 20px;color:var(--muted)}
-.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 JS ENGINE — Smart Double Pre-fetching Engine Live (Async Decoding Added)
+# 🎬 JS ENGINE — Smart Double Pre-fetching Engine Live Live
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
@@ -351,7 +295,6 @@ SEARCH_ZONE = (
 )
 
 # ✅ OPTIMIZATION 1: Pre-compile the entire body string ONCE when the app starts.
-# Saves RAM and CPU cycles on every user request.
 DASHBOARD_BODY = CARD_CSS + SEARCH_ZONE + f"<script>{JS_ENGINE}</script>"
 
 
@@ -365,7 +308,6 @@ async def dash(req):
         if not mp.get("premium"):
             return web.HTTPFound('/premium_expired')
 
-    # Reusing the pre-compiled DASHBOARD_BODY
     return build_page("Home - Fast Finder", DASHBOARD_BODY, "", "dash", role)
 
 
@@ -403,7 +345,6 @@ async def premium_expired(req):
 
 
 # ✅ OPTIMIZATION 2: Koyeb Health Check Route
-# Essential for Koyeb deployments. It prevents the MicroVM from restarting.
 @dashboard_routes.get('/health')
 async def koyeb_health_check(req):
     return web.json_response({"status": "alive", "platform": "koyeb"})
