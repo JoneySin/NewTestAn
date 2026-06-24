@@ -62,10 +62,6 @@ PICS = environ.get("PICS", "https://i.postimg.cc/8C15CQ5y/1.png").split()
 # ─────────────────────────────────────────────
 # 📢 STORAGE & MICRO-ROUTING CHANNELS SYNC
 # ─────────────────────────────────────────────
-PRIMARY_CHANNEL = get_channels("PRIMARY_CHANNEL")
-CLOUD_CHANNEL = get_channels("CLOUD_CHANNEL")
-ARCHIVE_CHANNEL = get_channels("ARCHIVE_CHANNEL")
-
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "0"))
 if not LOG_CHANNEL:
     logger.error("❌ LOG_CHANNEL missing")
