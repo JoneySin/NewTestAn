@@ -205,7 +205,7 @@ async function doSearch(o){
                 }
             }
 
-            h+='<div class="file-card">'+
+            h+='<div class="file-card card-enter">'+
                 posterHtml+
                 textInfo+
                 '<div class="fc-body">'+
@@ -214,6 +214,7 @@ async function doSearch(o){
             '</div>';
         });
         resDiv.innerHTML=h;
+        staggerCards(resDiv);
         nextOff=d.next_offset;
         document.getElementById('pageBox').style.display='flex';
         document.getElementById('pBtn').disabled=(o===0);
