@@ -250,7 +250,11 @@ function refreshGridAfterEdit() {
 }
 function staggerCards(container){
     container.querySelectorAll('.card-enter').forEach(function(c,i){
-        c.style.animationDelay=(Math.min(i,10)*0.08)+'s';
+        var delay=Math.min(i,10)*0.08;
+        c.style.animationDelay=delay+'s';
+        // Animation खत्म होने के बाद class हटाओ — ताकि :active/:hover काम करे
+        var totalDur=(0.6+delay)*1000;
+        setTimeout(function(){ c.classList.remove('card-enter'); c.style.animationDelay=''; },totalDur);
     });
 }
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
