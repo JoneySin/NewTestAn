@@ -35,7 +35,8 @@ CSS = """
   75% {transform:translateY(2px) scale(0.998)}
   100%{opacity:1;transform:translateY(0) scale(1)}
 }
-.card-enter{opacity:0;animation:cardEnter .6s cubic-bezier(.34,1.2,.64,1) forwards}
+.card-enter{opacity:0}
+.card-enter.card-visible{animation:cardEnter .6s cubic-bezier(.34,1.2,.64,1) forwards}
 
 /* ── Poster box (With Shimmer Effect) ── */
 .poster-box{position:relative;padding-top:56.25%;background:linear-gradient(90deg, var(--bg3) 0px, var(--bg4) 50%, var(--bg3) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite linear;overflow:hidden;width:100%}
@@ -249,13 +250,22 @@ function refreshGridAfterEdit() {
     else window.location.reload();
 }
 function staggerCards(container){
-    container.querySelectorAll('.card-enter').forEach(function(c,i){
-        var delay=Math.min(i,10)*0.08;
-        c.style.animationDelay=delay+'s';
-        // Animation खत्म होने के बाद class हटाओ — ताकि :active/:hover काम करे
-        var totalDur=(0.6+delay)*1000;
-        setTimeout(function(){ c.classList.remove('card-enter'); c.style.animationDelay=''; },totalDur);
-    });
+    var cards=container.querySelectorAll('.card-enter');
+    if(!cards.length) return;
+    var seen=0;
+    var obs=new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+            if(!entry.isIntersecting) return;
+            var c=entry.target;
+            var delay=Math.min(seen,10)*0.08; seen++;
+            c.style.animationDelay=delay+'s';
+            c.classList.add('card-visible');
+            var totalDur=(0.6+delay)*1000;
+            setTimeout(function(){ c.classList.remove('card-enter','card-visible'); c.style.animationDelay=''; },totalDur);
+            obs.unobserve(c);
+        });
+    },{threshold:0.08});
+    cards.forEach(function(c){ obs.observe(c); });
 }
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
