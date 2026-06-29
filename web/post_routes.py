@@ -505,9 +505,10 @@ async def posts_directory_page(req):
         .pg-bar {{ display:flex; justify-content:center; align-items:center; gap:15px; margin-top:30px; }}
         
         /* 📄 Text View CSS overrides */
+        .card-body {{ display: none; }}
         .grid-text-mode .poster-wrap {{ display: none !important; }}
-        .grid-text-mode .act-card {{ display:flex; align-items:center; padding:5px; }}
-        .grid-text-mode .card-body {{ text-align:left !important; padding:10px 15px !important; flex:1; }}
+        .grid-text-mode .act-card {{ display:flex; align-items:center; padding:5px; background:var(--card); }}
+        .grid-text-mode .card-body {{ display: block !important; text-align:left !important; padding:10px 15px !important; flex:1; }}
     </style>
     
     <div class="search-box">
@@ -536,9 +537,22 @@ async def posts_directory_page(req):
     for p in all_posts:
         cover = p.get("cover_image", "")
         img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
-        cat_badge = f'<div style="font-size:11px; color:var(--muted); font-weight:700; margin-top:4px;">{html.escape(p.get("category", "Uncategorized"))}</div>'
+        cat_name = html.escape(p.get("category", "Uncategorized"))
+        title_text = html.escape(p.get("title", "Untitled"))
         
-        post_items += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'"><div class="poster-wrap" style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;"><img src="{img_src}" class="act-poster" loading="lazy"><div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:9px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2;">🎬 POST</div></div><div class="card-body" style="padding:12px; text-align:center;"><div style="font-size:13.5px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{html.escape(p.get("title", "Untitled"))}</div>{cat_badge}</div></div>'''
+        post_items += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'">
+            <div class="poster-wrap" style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;">
+                <img src="{img_src}" class="act-poster" loading="lazy">
+                <div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2; text-transform:uppercase; box-shadow:0 2px 10px rgba(0,0,0,0.5);">🎬 {cat_name}</div>
+                <div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 40%, transparent 100%); padding:30px 12px 12px 12px; z-index:2; text-align:center;">
+                    <div style="font-size:14.5px; font-weight:900; color:#fff; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; text-shadow:0 2px 6px rgba(0,0,0,0.9); letter-spacing:0.5px;">{title_text}</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="font-size:14px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{title_text}</div>
+                <div style="font-size:11px; color:var(--muted); font-weight:700; margin-top:4px;">{cat_name}</div>
+            </div>
+        </div>'''
     
     initial_grid = f'<div id="post_grid_container" class="dir-grid">{post_items}</div>' if all_posts else '<div style="text-align:center; padding:60px 20px; color:var(--muted);">No posts found.</div>'
 
@@ -604,9 +618,22 @@ async def api_posts_search(req):
     for p in docs:
         cover = p.get("cover_image", "")
         img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
-        cat_badge = f'<div style="font-size:11px; color:var(--muted); font-weight:700; margin-top:4px;">{html.escape(p.get("category", "Uncategorized"))}</div>'
+        cat_name = html.escape(p.get("category", "Uncategorized"))
+        title_text = html.escape(p.get("title", "Untitled"))
         
-        html_out += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'"><div class="poster-wrap" style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;"><img src="{img_src}" class="act-poster" loading="lazy"><div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:9px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2;">🎬 POST</div></div><div class="card-body" style="padding:12px; text-align:center;"><div style="font-size:13.5px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{html.escape(p.get("title", "Untitled"))}</div>{cat_badge}</div></div>'''
+        html_out += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'">
+            <div class="poster-wrap" style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;">
+                <img src="{img_src}" class="act-poster" loading="lazy">
+                <div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2; text-transform:uppercase; box-shadow:0 2px 10px rgba(0,0,0,0.5);">🎬 {cat_name}</div>
+                <div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 40%, transparent 100%); padding:30px 12px 12px 12px; z-index:2; text-align:center;">
+                    <div style="font-size:14.5px; font-weight:900; color:#fff; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; text-shadow:0 2px 6px rgba(0,0,0,0.9); letter-spacing:0.5px;">{title_text}</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="font-size:14px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{title_text}</div>
+                <div style="font-size:11px; color:var(--muted); font-weight:700; margin-top:4px;">{cat_name}</div>
+            </div>
+        </div>'''
             
     return web.json_response({"html": html_out, "has_next": has_next}, dumps=fast_json)
 
