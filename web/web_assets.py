@@ -1,331 +1,865 @@
-import time
+import io, gc, time, html, re
+import asyncio
+import aiohttp
+import orjson
 from aiohttp import web
-from info import ADMINS, MAX_WEB_RESULTS
+from bson.objectid import ObjectId
 from utils import temp
+from info import THUMBNAIL_STORAGE_CHANNEL
+from database.users_chats_db import db as motor_db
+from web.web_assets import build_page, get_auth, form_wrapper
 
-# ----------------- ULTRA-PREMIUM GLASS DIAGNOSTICS ASSETS -----------------
-CSS = """
-*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0a0a0c;--bg2:#111116;--bg3:#1d1d26;--bg4:#2a2a38;--accent:#e50914;--accent-hover:#b30710;--text:#ffffff;--muted:#a0a0b0;--border:#262636;--card:#14141f;--sidebar-w:260px;--primary-p:0%;--cloud-p:0%;--archive-p:0%}.light{--bg:#f4f5f7;--bg2:#ffffff;--bg3:#eef0f4;--bg4:#dbdee6;--text:#0a0a0c;--muted:#62627a;--border:#d2d5df;--card:#ffffff}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:.2s}.topbar{background:var(--bg2);padding:0 4%;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;gap:15px;box-shadow:0 4px 20px rgba(0,0,0,0.4);border-bottom:1px solid var(--border)}.ham-btn{background:0 0;border:0;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:5px;padding:6px}.ham-line{width:22px;height:2px;background:currentColor;transition:.2s}.logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;text-decoration:none;flex:1}.nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}.theme-btn{margin-left:auto;background:0 0;border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer}.theme-btn:hover{background:var(--bg3)}.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:.2s}.sidebar-overlay.open{opacity:1;pointer-events:all}.sidebar{position:fixed;top:0;left:0;height:100%;width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);z-index:160;display:flex;flex-direction:column;transform:translateX(-100%);transition:.3s}.sidebar.open{transform:translateX(0)}.sb-header{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}.sb-logo{font-size:14px;font-weight:900;color:var(--accent);display:flex;align-items:center;gap:8px}.sb-close{background:0 0;border:0;color:var(--muted);font-size:22px;cursor:pointer}.sb-nav{padding:15px 10px;flex:1}.sb-section{font-size:11px;font-weight:700;color:var(--muted);padding:8px 12px}.sb-link{display:flex;padding:12px 15px;border-radius:4px;text-decoration:none;color:var(--muted);font-size:15px;font-weight:500;margin-bottom:4px}.sb-link.active{background:var(--accent);color:#fff}.sb-footer{padding:15px 10px;border-top:1px solid var(--border)}.sb-logout{display:block;padding:12px;border-radius:4px;text-align:center;text-decoration:none;color:var(--text);font-weight:700;border:1px solid var(--border)}.search-zone{padding:20px 4%;background:var(--bg)}.search-row{display:flex;gap:10px;flex-wrap:wrap}.search-wrap{flex:1;position:relative;min-width:200px}.s-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted)}.search-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 15px 12px 42px;color:var(--text);font-size:15px;outline:0}.search-btn{background:var(--accent);color:#fff;border:0;border-radius:4px;padding:12px 24px;font-weight:700;cursor:pointer}.main{padding:0 4% 40px;max-width:1400px;margin:0 auto}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-bottom:30px}.scard{background:var(--card);padding:24px;border-radius:8px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.2);border:1px solid var(--border);transition:0.3s}.scard:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,0.4)}.scard-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}.scard-val{font-size:36px;font-weight:900;color:var(--text);margin-bottom:8px;font-family:'Courier New',monospace}.scard-sub{font-size:13px;color:var(--muted);display:flex;justify-content:between;align-items:center}.big-stat{background:linear-gradient(135deg, var(--card) 0%, var(--bg2) 100%);padding:40px 20px;border-radius:8px;text-align:center;margin-bottom:30px;border:1px solid var(--border);box-shadow:0 10px 40px rgba(0,0,0,0.3)}.big-stat-val{font-size:72px;font-weight:900;color:var(--accent);margin-bottom:10px;letter-spacing:-1px;font-family:'Courier New',monospace}.big-stat-label{font-size:14px;color:var(--muted);font-weight:700;letter-spacing:3px;text-transform:uppercase}.custom-progress-container{width:100%;height:6px;background:var(--bg4);border-radius:3px;margin:12px 0 6px;overflow:hidden}.custom-progress-bar{height:100%;border-radius:3px;transition:width 1s cubic-bezier(0.4, 0, 0.2, 1)}.custom-progress-bar.primary-fill{background:#3399ff;width:var(--primary-p)}.custom-progress-bar.cloud_fill{background:#ff9933;width:var(--cloud-p)}.custom-progress-bar.archive-fill{background:#9933ff;width:var(--archive-p)}.mode-none .poster-box{display:none}
-.empty{text-align:center;padding:80px 20px;color:var(--muted);grid-column:1/-1}.empty-icon{font-size:40px;margin-bottom:15px}.toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:4px;font-weight:700;z-index:300;transform:translateX(150%);transition:.3s}.toast.show{transform:translateX(0)}.toast.error{background:#000;border:1px solid var(--accent)}.login-bg{background:linear-gradient(rgba(0,0,0,.8) 0,rgba(0,0,0,.4) 50%,rgba(0,0,0,.8) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;background-attachment:fixed;min-height:100vh;display:flex;flex-direction:column}.light .login-bg{background:linear-gradient(rgba(255,255,255,.85) 0,rgba(255,255,255,.6) 50%,rgba(255,255,255,.9) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;background-attachment:fixed}.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:calc(100vh - 68px)}.login-card{background:var(--card);padding:50px;border-radius:12px;width:100%;max-width:450px;box-shadow:0 15px 40px rgba(0,0,0,.3);border:1px solid var(--border)}.login-card h2{font-size:32px;margin-bottom:28px;color:var(--text)}.login-card input{width:100%;background:var(--bg);border:1px solid var(--border);padding:16px;color:var(--text);margin-bottom:16px;border-radius:6px;outline:none}.login-card input:focus{border-color:var(--accent)}.login-card .submit-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:16px;font-weight:700;margin-top:24px;border-radius:6px;cursor:pointer}.err-box{background:#e87c03;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.success-box{background:#28a745;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.big-stat{background:var(--card);padding:40px 20px;border-radius:4px;text-align:center;margin-bottom:30px}.big-stat-val{font-size:64px;font-weight:900;color:var(--accent);margin-bottom:10px}.big-stat-label{font-size:16px;color:var(--muted);font-weight:700;letter-spacing:2px}.edit-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:.2s;overflow-y:auto;padding:20px 10px}.edit-modal.open{opacity:1;pointer-events:all}.em-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:25px;width:100%;max-width:480px;box-shadow:0 10px 30px rgba(0,0,0,.5);position:relative;margin:auto}.em-close{position:absolute;top:15px;right:20px;background:0 0;border:0;color:var(--muted);font-size:24px;cursor:pointer;z-index:10}.em-title{font-size:18px;font-weight:700;margin-bottom:20px;display:flex;align-items:center;gap:8px}.em-input{width:100%;background:var(--bg);border:1px solid var(--border);padding:12px;color:var(--text);margin-bottom:15px;border-radius:6px;outline:none;font-size:14px}.em-input:focus{border-color:var(--accent)}.thumb-preview-box{width:100%;aspect-ratio:16/9;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:15px;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center}.t-prev-img{max-width:100%;max-height:100%;object-fit:contain}.em-upload-btn{display:block;text-align:center;background:var(--bg4);border:1px dashed var(--border);padding:12px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-bottom:20px;transition:0.2s}.em-upload-btn:hover{background:var(--bg3);border-color:var(--text)}.em-save-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:14px;font-weight:700;border-radius:6px;cursor:pointer;font-size:15px;transition:0.2s}.em-save-btn:hover{background:var(--accent-hover)}.em-save-btn:disabled{opacity:.5;cursor:not-allowed}.cropper-container-box{width:100%;aspect-ratio:16/9;margin-bottom:15px;border-radius:6px;overflow:hidden;display:none;background:#000}.cropper-view-box{box-outline:none;outline:2px solid var(--accent)!important;outline-color:var(--accent)!important}.cropper-line,.cropper-point{background-color:var(--accent)!important;opacity:0.8}.cropper-bg{background-image:none!important;background-color:#000!important}.cropper-modal{opacity:.8!important;background-color:#000!important}
-/* --- Global Admin Edit Buttons --- */
-.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none;z-index:4}
-.file-card.admin-active .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
-.text-admin-row{display:none;gap:5px;padding:5px 11px 0}
-.file-card.admin-active .text-admin-row{display:flex}
-.btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
-.btn-edit{background:rgba(42,42,48,.90);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.18)}
-.btn-edit:hover{background:rgba(80,80,88,.95)}
-.btn-del{background:rgba(160,8,8,.78);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(229,9,20,.45)}
-.btn-del:hover{background:rgba(229,9,20,.92)}
+post_routes = web.RouteTableDef()
+posts_col = motor_db.db["Posts"]
 
-/* ── MASTER UNIVERSAL ASSET CARD & GRID (DRY OPTIMIZED & NEW ANIMATIONS) ── */
-.res-grid{display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:24px}
-@media(min-width:600px){.res-grid{grid-template-columns:repeat(3,1fr);gap:14px}}
-.res-grid.mode-none .poster-box{display:none}
+# ─────────────────────────────────────────────────────────
+# ⚡ ULTRA-FAST ORJSON DUMP FUNCTION
+# ─────────────────────────────────────────────────────────
+def fast_json(data):
+    return orjson.dumps(data).decode('utf-8')
 
-/* ✅ NEW PREMIUM 3D HOVER EFFECT - Global For All Pages */
-.file-card{background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;transition:all .3s cubic-bezier(.25,.8,.25,1);cursor:pointer;position:relative;box-shadow:0 4px 10px rgba(0,0,0,0.2)}
-.file-card:hover{transform:translateY(-6px) scale(1.02);border-color:var(--accent);box-shadow:0 15px 35px rgba(0,0,0,.6),0 0 15px rgba(229,9,20,.3);z-index:2}
-.file-card:active{transform:scale(.96);transition:transform .1s}
+# ─────────────────────────────────────────────────────────
+# 🛠️ ImgBB Auto-Converter Helper Functions
+# ─────────────────────────────────────────────────────────
+async def fetch_direct_ibb_url(session, url):
+    url = url.strip()
+    if not url: return None
+    if "ibb.co" in url and "i.ibb.co" not in url:
+        try:
+            async with session.get(url, timeout=5) as resp:
+                if resp.status == 200:
+                    html_content = await resp.text()
+                    match = re.search(r'<meta property="og:image" content="([^"]+)"', html_content)
+                    if match: return match.group(1)
+        except Exception: pass
+    return url
 
-/* ── STAGGERED CARD ENTRANCE ANIMATION ── */
-@keyframes cardEnter{
-  0%  {opacity:0;transform:translateY(36px) scale(0.93)}
-  55% {opacity:1;transform:translateY(-5px) scale(1.015)}
-  75% {transform:translateY(2px) scale(0.998)}
-  100%{opacity:1;transform:translateY(0) scale(1)}
-}
-.card-enter{opacity:0}
-.card-enter.card-visible{animation:cardEnter .6s cubic-bezier(.34,1.2,.64,1) forwards}
+async def convert_all_ibb_links(urls):
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_direct_ibb_url(session, u) for u in urls if u.strip()]
+        results = await asyncio.gather(*tasks)
+        return [r for r in results if r]
 
-/* ── Poster box (With Shimmer Effect) ── */
-.poster-box{position:relative;padding-top:56.25%;background:linear-gradient(90deg, var(--bg3) 0px, var(--bg4) 50%, var(--bg3) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite linear;overflow:hidden;width:100%}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+# ─────────────────────────────────────────────────────────
+# 🎨 SHARED POST FORM STYLES + SCRIPTS
+# ─────────────────────────────────────────────────────────
+POST_FORM_CSS = """
+<style>
+.pf-wrap { max-width: 720px; margin: 0 auto; padding: 16px 14px 40px; }
+.pf-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.pf-back { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 5px; background: var(--bg3); border: 1px solid var(--border); padding: 8px 14px; border-radius: 8px; transition: .18s; white-space: nowrap; }
+.pf-back:hover { color: var(--text); border-color: var(--muted); }
+.pf-title { font-size: 22px; font-weight: 900; color: var(--text); flex: 1; min-width: 0; }
+.pf-section { background: var(--card); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 14px; overflow: hidden; }
+.pf-section.accent-border { border-color: var(--accent); }
+.pf-sec-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.pf-sec-num { width: 26px; height: 26px; border-radius: 50%; background: var(--bg4); color: var(--text); font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pf-section.accent-border .pf-sec-num { background: var(--accent); color: #fff; }
+.pf-sec-label { font-size: 13px; font-weight: 800; color: var(--text); text-transform: uppercase; letter-spacing: .7px; }
+.pf-sec-body { padding: 14px 16px; }
+.pf-field { margin-bottom: 12px; }
+.pf-field:last-child { margin-bottom: 0; }
+.pf-lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+.pf-input { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 11px 13px; color: var(--text); border-radius: 8px; outline: none; font-family: inherit; font-size: 14px; transition: border-color .15s; box-sizing: border-box; }
+.pf-input:focus { border-color: var(--accent); background: var(--bg2); }
+textarea.pf-input { resize: vertical; min-height: 100px; line-height: 1.5; }
+.pf-divider { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.pf-divider::before, .pf-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.pf-divider span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .8px; white-space: nowrap; }
+.pf-file-btn { display: flex; align-items: center; gap: 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; cursor: pointer; transition: .18s; width: 100%; box-sizing: border-box; }
+.pf-file-btn:hover { border-color: var(--muted); background: var(--bg4); }
+.pf-file-btn-icon { font-size: 16px; flex-shrink: 0; }
+.pf-file-btn-text { flex: 1; min-width: 0; }
+.pf-file-btn-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.pf-file-btn-hint { font-size: 11px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-file-btn input[type=file] { display: none; }
 
-/* ✅ ENHANCED POSTER ZOOM REVEAL */
-.fc-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s ease,transform .5s cubic-bezier(.25,1,.5,1)}
-.fc-poster.loaded{opacity:1}
-.file-card:hover .fc-poster{transform:scale(1.08)}
+/* Video Search */
+.pf-search-row { display: flex; gap: 8px; }
+.pf-search-row .pf-input { flex: 1; min-width: 0; margin: 0; }
+.pf-search-btn { background: var(--accent); color: #fff; border: none; padding: 11px 18px; border-radius: 8px; font-weight: 800; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: .15s; }
+.pf-search-btn:hover { background: var(--accent-hover); }
+.pf-search-results { border: 1px solid var(--border); border-radius: 8px; max-height: 220px; overflow-y: auto; display: none; margin-top: 8px; background: var(--bg2); }
+.pf-search-item { padding: 11px 13px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+.pf-search-item:last-child { border-bottom: none; }
+.pf-search-item:hover { background: var(--bg3); }
+.pf-search-item-name { font-weight: 700; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-search-item-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.pf-search-item-meta span { background: var(--bg4); padding: 2px 6px; border-radius: 4px; }
 
-.thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f;z-index:2}
-.poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px;z-index:3}
-.type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
-.size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
-.source-pill{margin-left:auto;border-radius:20px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.4px;display:inline-flex;align-items:center;gap:4px;backdrop-filter:blur(8px)}
-.source-pill.primary{background:#14532d;color:#4ade80;border:1px solid #22c55e}
-.source-pill.cloud{background:#1e3a5f;color:#93c5fd;border:1px solid #60a5fa}
-.source-pill.archive{background:#7c2d12;color:#fdba74;border:1px solid #fb923c}
-.source-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
-.primary .source-dot{background:#22c55e;box-shadow:0 0 4px #22c55e}
-.cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
-.archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
+/* Selected Videos */
+.pf-videos-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin: 12px 0 8px; }
+.pf-videos-empty { border: 1.5px dashed var(--border); border-radius: 8px; padding: 18px; text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; }
+#selectedVideosContainer { display: flex; flex-direction: column; gap: 10px; }
+.pf-vid-card { background: var(--bg); border: 1px solid var(--accent); border-radius: 10px; overflow: hidden; }
+.pf-vid-card-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgba(229,9,20,0.08); border-bottom: 1px solid rgba(229,9,20,0.2); }
+.pf-vid-card-name { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-vid-del { background: rgba(160,8,8,0.85); color: #fff; border: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .12s; }
+.pf-vid-del:hover { background: var(--accent); }
+.pf-vid-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 
-.fc-body{padding:10px 11px 12px;flex:1;display:flex;flex-direction:column;justify-content:center}
-.fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;transition:color .18s;text-decoration:none}
-.fc-name:hover{color:var(--accent);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:2px}
+/* Submit Button */
+.pf-submit { width: 100%; background: var(--accent); color: #fff; border: none; padding: 15px; border-radius: 10px; font-weight: 800; font-size: 15px; cursor: pointer; margin-top: 6px; box-shadow: 0 6px 20px rgba(229,9,20,0.35); transition: transform .15s, box-shadow .15s; }
+.pf-submit:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(229,9,20,0.45); }
+.pf-submit:active { transform: scale(.97); }
 
-.fc-text-info{display:flex;align-items:center;gap:6px;padding:10px 11px 0;flex-wrap:wrap;margin-bottom:4px}
-.tc-type{background:var(--bg4);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:9px;font-weight:800;letter-spacing:.8px;border:1px solid var(--border)}
-.tc-size{color:var(--muted);font-size:11px}
+/* Cover preview */
+.pf-cover-preview { width: 100%; aspect-ratio: 2/3; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; display: block; border: 1px solid var(--border); background: var(--bg3); }
 
-.spin-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:60px 20px;color:var(--muted);grid-column:1/-1}
-.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* Live URL preview box */
+.pf-url-preview-wrap { position: relative; margin-bottom: 10px; border-radius: 10px; overflow: hidden; background: var(--bg3); border: 1px solid var(--border); display: none; }
+.pf-url-preview-wrap.visible { display: block; }
+.pf-url-preview-img { width: 100%; max-height: 200px; object-fit: cover; display: block; transition: opacity .25s; }
+.pf-url-preview-badge { position: absolute; top: 8px; left: 8px; background: rgba(34,197,94,0.9); color: #fff; font-size: 10px; font-weight: 800; padding: 3px 9px; border-radius: 20px; backdrop-filter: blur(6px); }
+.pf-url-preview-badge.loading { background: rgba(0,0,0,0.7); }
+.pf-url-preview-badge.error { background: rgba(229,9,20,0.85); }
+.pf-url-preview-clear { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.65); color: #fff; border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: background .15s; }
+.pf-url-preview-clear:hover { background: rgba(229,9,20,0.85); }
 
-/* ✅ GLOBAL PREMIUM PAGINATION (For Dashboard & Other Pages) */
-.pagination{display:none;align-items:center;justify-content:center;gap:12px;margin-top:8px;padding-bottom:20px}
-.pg-btn{background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,transform .15s,box-shadow .15s}
-.pg-btn:disabled{background:var(--bg3);color:var(--muted);cursor:not-allowed;opacity:.45}
-.pg-btn:not(:disabled):hover{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 4px 16px rgba(229,9,20,.35)}
-.pg-btn:not(:disabled):active{transform:scale(.93);box-shadow:none}
-.pg-info{color:var(--muted);font-size:12px;font-weight:600}
+/* Screenshot URL preview strip */
+.pf-ss-strip { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: thin; }
+.pf-ss-strip::-webkit-scrollbar { height: 4px; }
+.pf-ss-strip::-webkit-scrollbar-track { background: var(--bg3); border-radius: 2px; }
+.pf-ss-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.pf-ss-thumb { flex-shrink: 0; width: 80px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: var(--bg3); }
 
-/* ── ACTOR DIRECTORY CARD (DRY GLOBAL) ── */
-.act-card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:transform .22s cubic-bezier(.4,0,.2,1),border-color .22s,box-shadow .22s;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,0.2)}
-.act-card:hover{transform:translateY(-6px);border-color:rgba(229,9,20,.6);box-shadow:0 8px 22px rgba(229,9,20,.25)}
-.act-card:active{transform:scale(0.95);transition:transform .1s}
-
-/* act-card uses .card-enter (shared) */
-.act-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s cubic-bezier(.4,0,.2,1)}
-.act-card:hover .act-poster{transform:scale(1.1)}
-.act-text-card:active{transform:scale(0.97);transition:transform .1s}
+/* Error / Success */
+.pf-err { background: rgba(229,9,20,0.12); border: 1px solid rgba(229,9,20,0.4); color: #ff6b6b; border-radius: 8px; padding: 11px 14px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+.pf-msg { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.35); color: #4ade80; border-radius: 8px; padding: 11px 14px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+</style>
 """
 
-JS = """
-(function(){if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light')})();
-function toggleThemeFixed(){var l=document.documentElement.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}
-function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sbOverlay').classList.add('open');document.getElementById('hamBtn').classList.add('open');}
-function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sbOverlay').classList.remove('open');document.getElementById('hamBtn').classList.remove('open');}
-var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
-var pMode=localStorage.getItem('posterMode')||'tg';
-var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
-
-var activeFid = '', activeCol = '', cropperInstance = null;
-
-function handleThumbError(fileId) {
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) { img.style.opacity = '0'; }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (!errBox) {
-        var box = document.getElementById('poster-box-' + fileId);
-        if (box) {
-            var div = document.createElement('div');
-            div.id = 'thumb-err-' + fileId;
-            div.className = 'thumb-error';
-            div.innerHTML = '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1f1f1f; padding:10px;"><span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ</span></div>';
-            box.appendChild(div);
+POST_FORM_JS = """
+<script>
+async function searchVideosForPost() {
+    const q = document.getElementById('videoSearchInput').value.trim();
+    if (!q) return;
+    const resDiv = document.getElementById('videoSearchResults');
+    resDiv.style.display = 'block';
+    resDiv.innerHTML = '<div class="pf-search-item" style="text-align:center; color:var(--muted);">Searching...</div>';
+    try {
+        const response = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=none');
+        const data = await response.json();
+        if (!data.results || data.results.length === 0) {
+            resDiv.innerHTML = '<div class="pf-search-item" style="text-align:center; color:var(--muted);">No files found.</div>';
+            return;
         }
+        let h = '';
+        data.results.forEach(f => {
+            const safeName = f.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+            const safeSize = (f.size || '').replace(/'/g, "\\'");
+            h += `<div class="pf-search-item" onclick="addVideoToPost('${f.file_id}', '${safeName}')">
+                <div class="pf-search-item-name">${f.name}</div>
+                <div class="pf-search-item-meta"><span>${f.size || ''}</span></div>
+            </div>`;
+        });
+        resDiv.innerHTML = h;
+    } catch (e) {
+        resDiv.innerHTML = '<div class="pf-search-item" style="text-align:center; color:var(--accent);">Error loading results</div>';
     }
 }
 
-async function reloadThumb(fileId) {
-    var timestamp = new Date().getTime();
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) {
-        img.src = '/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp;
-        img.classList.remove('loaded');
+document.addEventListener('click', function(e) {
+    const resDiv = document.getElementById('videoSearchResults');
+    if (resDiv && !resDiv.contains(e.target) && e.target.id !== 'videoSearchInput') {
+        resDiv.style.display = 'none';
     }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (errBox) { errBox.remove(); }
-}
-
-var _tt;
-function showToast(m,t){
-    t=t||'success';
-    var x=document.getElementById('toast');
-    if(!x){x=document.createElement('div');x.id='toast';x.className='toast';document.body.appendChild(x);}
-    x.textContent=m;x.className='toast '+t+' show';
-    clearTimeout(_tt);
-    _tt=setTimeout(function(){x.classList.remove('show');},3000);
-}
-
-function toggleAdminBtns(card,e){
-    e.stopPropagation();
-    var isActive=card.classList.contains('admin-active');
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
-    if(!isActive) card.classList.add('admin-active');
-}
-
-document.addEventListener('click',function(){
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
 });
 
-async function deleteFile(fid,col){
-    if(!confirm('Are you sure you want to delete this file?'))return;
-    try{
-        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        if(res.success){ showToast('✅ File deleted successfully!'); refreshGridAfterEdit(); }
-        else{ showToast(res.error||'Delete failed!','error'); }
-    }catch(e){showToast('Delete failed','error');}
+function addVideoToPost(fileId, fileName) {
+    document.getElementById('videoSearchResults').style.display = 'none';
+    document.getElementById('videoSearchInput').value = '';
+    const container = document.getElementById('selectedVideosContainer');
+    const emptyNotice = container.querySelector('.pf-videos-empty');
+    if (emptyNotice) emptyNotice.remove();
+    const div = document.createElement('div');
+    div.className = 'pf-vid-card';
+    div.innerHTML = `
+        <div class="pf-vid-card-head">
+            <span style="font-size:14px;">🎬</span>
+            <span class="pf-vid-card-name" title="${fileName}">${fileName}</span>
+            <input type="hidden" name="video_id" value="${fileId}">
+            <button type="button" class="pf-vid-del" onclick="this.closest('.pf-vid-card').remove(); checkEmpty();">✕</button>
+        </div>
+        <div class="pf-vid-card-body">
+            <div>
+                <div class="pf-lbl">Group / Episode Name</div>
+                <input type="text" name="video_heading" placeholder="e.g. Episode 1, Movie Links, Season 2" class="pf-input" required>
+            </div>
+            <div>
+                <div class="pf-lbl">Quality Label</div>
+                <input type="text" name="video_name" placeholder="e.g. 1080p, 4K, 480p" class="pf-input" style="color:var(--accent); font-weight:800;" required>
+            </div>
+        </div>`;
+    container.appendChild(div);
 }
 
-function editFile(fid, col, encName, encCaption){
-    var currentName = decodeURIComponent(encName);
-    var currentCaption = (encCaption && encCaption !== 'undefined') ? decodeURIComponent(encCaption) : '';
-    activeFid = fid; activeCol = col;
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-    document.getElementById('emName').value=currentName;
-    document.getElementById('emFile').value='';
-    document.getElementById('cropContainer').style.display='none';
-    if(document.getElementById('emMoveCol')) document.getElementById('emMoveCol').value = col;
-    if(document.getElementById('emAddCaption')) document.getElementById('emAddCaption').value = currentCaption;
-    
-    var prevBox=document.getElementById('emPreviewBox');
-    prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
-    document.getElementById('editCombinedModal').classList.add('open');
-}
-
-function closeCombinedModal(){
-    document.getElementById('editCombinedModal').classList.remove('open');
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-}
-
-function handleLocalPreview(input){
-    if(input.files&&input.files[0]){
-        var reader=new FileReader();
-        reader.onload=function(e){
-            if(cropperInstance) cropperInstance.destroy();
-            document.getElementById('emPreviewBox').style.display='none';
-            var cropWrap=document.getElementById('cropContainer');
-            cropWrap.style.display='block';
-            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
-            var img=document.getElementById('cropImage');
-            cropperInstance=new Cropper(img,{aspectRatio:16/9,viewMode:1,background:false,zoomable:true,movable:true});
-        };
-        reader.readAsDataURL(input.files[0]);
+function checkEmpty() {
+    const container = document.getElementById('selectedVideosContainer');
+    if (!container.querySelector('.pf-vid-card')) {
+        container.innerHTML = '<div class="pf-videos-empty">No videos added yet. Search above to add files.</div>';
     }
 }
 
-async function saveAllChanges(){
-    var newName=document.getElementById('emName').value.trim();
-    var addCaption=document.getElementById('emAddCaption') ? document.getElementById('emAddCaption').value.trim() : '';
-    var moveCol=document.getElementById('emMoveCol') ? document.getElementById('emMoveCol').value : activeCol;
-    if(!newName){showToast('File name cannot be empty!','error');return;}
-    
-    var btn=document.getElementById('emSaveBtn');
-    btn.disabled=true; btn.innerText='Processing...';
-    try{
-        var thumbUpdated = false;
-        
-        if(cropperInstance){
-            showToast('✂️ Cropping & Uploading...');
-            var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
-            var blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',0.9));
-            if(blob){
-                var fd=new FormData(); fd.append('file_id',activeFid); fd.append('collection',activeCol); fd.append('image',blob,'cropped.jpg');
-                var upRes=await fetch('/api/upload_thumb',{method:'POST',body:fd});
-                var upData=await upRes.json();
-                if(!upData.success){showToast('Upload failed!','error'); btn.disabled=false; btn.innerText='Save Changes'; return;}
-                thumbUpdated = true;
+function updateFileName(input, labelId) {
+    const lbl = document.getElementById(labelId);
+    if (lbl) {
+        if (input.files && input.files.length > 0) {
+            if (input.multiple && input.files.length > 1) {
+                lbl.textContent = input.files.length + ' files selected';
+            } else {
+                lbl.textContent = input.files[0].name;
             }
+        } else {
+            lbl.textContent = 'No file chosen';
         }
-        var payload = { file_id: activeFid, collection: activeCol, new_name: newName, add_caption: addCaption, target_collection: moveCol };
-        var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify(payload),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        
-        if(res.success||cropperInstance){
-            showToast('✨ File updated successfully!');
-            closeCombinedModal();
-            
-            if (activeCol !== moveCol) {
-                refreshGridAfterEdit();
-                return;
-            }
-            
-            var nameElement = document.getElementById('name-title-' + activeFid);
-            if (nameElement) nameElement.innerText = newName;
-            
-            if (thumbUpdated) reloadThumb(activeFid);
-            
-        } else showToast(res.error||'Update failed!','error');
-    }catch(e){showToast('Network Error','error');}
-    finally{btn.disabled=false; btn.innerText='Save Changes';}
+    }
 }
 
-function refreshGridAfterEdit() {
-    if (typeof doSearch === 'function') doSearch(curOff);
-    else if (typeof triggerActorSearchAjax === 'function') triggerActorSearchAjax();
-    else window.location.reload();
+/* ── LIVE COVER URL PREVIEW ── */
+var _coverDebounce = null;
+function onCoverUrlInput(inputId, wrapId) {
+    clearTimeout(_coverDebounce);
+    _coverDebounce = setTimeout(function() { triggerCoverPreview(inputId, wrapId); }, 500);
 }
-function staggerCards(container){
-    var cards=container.querySelectorAll('.card-enter');
-    if(!cards.length) return;
-    var seen=0;
-    var obs=new IntersectionObserver(function(entries){
-        entries.forEach(function(entry){
-            if(!entry.isIntersecting) return;
-            var c=entry.target;
-            var delay=Math.min(seen,10)*0.08; seen++;
-            c.style.animationDelay=delay+'s';
-            c.classList.add('card-visible');
-            var totalDur=(0.6+delay)*1000;
-            setTimeout(function(){ c.classList.remove('card-enter','card-visible'); c.style.animationDelay=''; },totalDur);
-            obs.unobserve(c);
-        });
-    },{threshold:0.08});
-    cards.forEach(function(c){ obs.observe(c); });
+
+function triggerCoverPreview(inputId, wrapId) {
+    var url = document.getElementById(inputId).value.trim();
+    var wrap = document.getElementById(wrapId);
+    var img  = wrap.querySelector('.pf-url-preview-img');
+    var badge = wrap.querySelector('.pf-url-preview-badge');
+    if (!url) { wrap.classList.remove('visible'); return; }
+    wrap.classList.add('visible');
+    badge.textContent = 'Loading...';
+    badge.className = 'pf-url-preview-badge loading';
+    img.style.opacity = '0';
+    img.onload = function() {
+        img.style.opacity = '1';
+        badge.textContent = '✓ Preview';
+        badge.className = 'pf-url-preview-badge';
+    };
+    img.onerror = function() {
+        img.style.opacity = '0';
+        badge.textContent = '✕ Cannot load image';
+        badge.className = 'pf-url-preview-badge error';
+    };
+    img.src = url;
 }
-""".replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
-def _h(html): return web.Response(text=html.encode('utf-8','replace').decode('utf-8'), content_type='text/html', charset='utf-8')
+function clearCoverPreview(inputId, wrapId) {
+    document.getElementById(inputId).value = '';
+    document.getElementById(wrapId).classList.remove('visible');
+    var img = document.getElementById(wrapId).querySelector('.pf-url-preview-img');
+    if (img) img.src = '';
+}
 
-async def get_auth(req):
-    s_user = req.cookies.get('user_session')
-    if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS and temp.USER_SESSIONS[s_user]['expiry'] > time.time():
-        tg_id = temp.USER_SESSIONS[s_user]['tg_id']
-        if tg_id in ADMINS: return 'admin', tg_id
-        return 'user', tg_id
-    return None, None
+/* ── LIVE SCREENSHOT STRIP PREVIEW ── */
+var _ssDebounce = null;
+function onSsUrlInput() {
+    clearTimeout(_ssDebounce);
+    _ssDebounce = setTimeout(renderSsStrip, 600);
+}
 
-def build_page(title, body, cls="", active_tab="", role=None):
-    if role == 'admin': 
-        nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/posts" class="sb-link {"active" if active_tab=="posts" else ""}">📝 Posts</a><a href="/actors" class="sb-link {"active" if active_tab=="actors" else ""}">🎭 Actors</a><a href="/stats" class="sb-link {"active" if active_tab=="stats" else ""}">Database Stats</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
-    elif role == 'user': 
-        nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/posts" class="sb-link {"active" if active_tab=="posts" else ""}">📝 Posts</a><a href="/actors" class="sb-link {"active" if active_tab=="actors" else ""}">🎭 Actors</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
-    else: 
-        nav_links = ""
+function renderSsStrip() {
+    var raw = document.getElementById('screenshotUrlsInput').value.trim();
+    var strip = document.getElementById('ssPreviewStrip');
+    if (!strip) return;
+    if (!raw) { strip.innerHTML = ''; return; }
+    var lines = raw.split('\\n').map(l => l.trim()).filter(Boolean);
+    strip.innerHTML = lines.map(function(u) {
+        return '<img class="pf-ss-thumb" src="' + u + '" loading="lazy" onerror="this.style.opacity=\'0.2\'">';
+    }).join('');
+}
+</script>
+"""
 
-    if role: nav = f'<div class="sidebar-overlay" id="sbOverlay" onclick="closeSidebar()"></div><div class="sidebar" id="sidebar"><div class="sb-header"><div class="sb-logo"><span class="nf-icon">F</span> FAST FINDER</div><button class="sb-close" onclick="closeSidebar()">&#10005;</button></div><nav class="sb-nav"><div class="sb-section">Menu</div>{nav_links}</nav><div class="sb-footer"><a href="/logout" class="sb-logout">Sign Out</a></div></div><div class="topbar"><button class="ham-btn" id="hamBtn" onclick="openSidebar()"><span class="ham-line"></span><span class="ham-line"></span><span class="ham-line"></span></button><a class="logo" href="/dashboard"><span class="nf-icon">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleThemeFixed()">Theme</button></div></div>'
-    else: nav = '<div class="topbar" style="position:absolute; width:100%; box-shadow:none; background:transparent;"><a class="logo" href="/" style="font-size:24px"><span class="nf-icon" style="font-size:24px">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleThemeFixed()">Theme</button></div></div>'
+# ─────────────────────────────────────────────────────────
+# 📝 1. ADMIN ROUTE: CREATE POST WIZARD (UI)
+# ─────────────────────────────────────────────────────────
+@post_routes.get('/admin/create_post')
+async def create_post_page(req):
+    role, _ = await get_auth(req)
+    if role != 'admin': return web.HTTPFound('/dashboard')
 
-    modals = """
-    <div class="edit-modal" id="editCombinedModal" onclick="if(event.target===this)closeCombinedModal()">
-        <div class="em-card">
-            <button class="em-close" onclick="closeCombinedModal()">&#10005;</button>
-            <div class="em-title">✏️ Edit Title Metadata</div>
-            
-            <div class="scard-label">File Name</div>
-            <input type="text" id="emName" class="em-input">
-            
-            <div class="scard-label" style="margin-top:5px;">➕ Add Search Tags to Caption (Optional)</div>
-            <input type="text" id="emAddCaption" class="em-input" placeholder="e.g. Ajay Devgan, 1080p, Comedy...">
-            
-            <div class="scard-label">📂 Move File to Collection</div>
-            <select id="emMoveCol" class="em-input" style="font-weight:600; cursor:pointer;">
-                <option value="primary">🟢 Primary</option>
-                <option value="cloud">🔵 Cloud</option>
-                <option value="archive">🟠 Archive</option>
-            </select>
-            
-            <div class="scard-label" style="margin-top:5px;">Poster Thumbnail (YouTube Studio Mode)</div>
-            <div class="thumb-preview-box" id="emPreviewBox"></div>
-            <div class="cropper-container-box" id="cropContainer"></div>
-            
-            <label class="em-upload-btn">
-                📂 Choose New Image / Poster
-                <input type="file" id="emFile" accept="image/*" style="display:none;" onchange="handleLocalPreview(this)">
-            </label>
-            
-            <button class="em-save-btn" id="emSaveBtn" onclick="saveAllChanges()">Save Changes</button>
-        </div>
+    err = req.query.get('err', '')
+    msg = req.query.get('msg', '')
+    err_html = f'<div class="pf-err">{html.escape(err)}</div>' if err else ''
+    msg_html = f'<div class="pf-msg">{html.escape(msg)}</div>' if msg else ''
+
+    body = POST_FORM_CSS + f'''
+<div class="pf-wrap">
+    <div class="pf-header">
+        <a href="/posts" class="pf-back">← Posts</a>
+        <div class="pf-title">Create New Post</div>
     </div>
-    """ if role == 'admin' else ""
 
-    return _h(f'<!DOCTYPE html><html><head><title>{title}</title><meta name="viewport" content="width=device-width,initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css"><style>{CSS}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script><script>{JS}</script></head><body class="{cls}">{nav}{body}{modals}</body></html>')
+    {err_html}{msg_html}
 
-def form_wrapper(title, content, err="", msg=""):
-    e = f'<div class="err-box">{err}</div>' if err else ""
-    m = f'<div class="success-box">{msg}</div>' if msg else ""
-    return f'<div class="login-wrap"><div class="login-card"><h2>{title}</h2>{e}{m}{content}</div></div>'
+    <form action="/api/post/publish" method="post" enctype="multipart/form-data">
+
+        <!-- SECTION 1-3: Basic Info -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">1</div>
+                <div class="pf-sec-label">Basic Information</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-field">
+                    <div class="pf-lbl">Post Title</div>
+                    <input type="text" name="title" placeholder="e.g. Panchayat S03 or Pushpa 2" class="pf-input" required>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">Short Description</div>
+                    <textarea name="description" placeholder="Write a short description about this post..." class="pf-input" required></textarea>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">Search Tags (comma separated)</div>
+                    <input type="text" name="tags" placeholder="e.g. Action, Web Series, 2024, Hindi" class="pf-input">
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: Cover Image -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">2</div>
+                <div class="pf-sec-label">Cover Image</div>
+            </div>
+            <div class="pf-sec-body">
+                <!-- Live preview box (hidden until URL typed) -->
+                <div class="pf-url-preview-wrap" id="coverPreviewWrap">
+                    <img class="pf-url-preview-img" src="" alt="">
+                    <div class="pf-url-preview-badge loading">Loading...</div>
+                    <button type="button" class="pf-url-preview-clear" onclick="clearCoverPreview('coverUrlInput','coverPreviewWrap')" title="Clear">✕</button>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">Paste Image URL (ibb.co or direct link)</div>
+                    <input type="text" id="coverUrlInput" name="cover_url" placeholder="https://i.ibb.co/..." class="pf-input"
+                        oninput="onCoverUrlInput('coverUrlInput','coverPreviewWrap')"
+                        onpaste="setTimeout(function(){{onCoverUrlInput('coverUrlInput','coverPreviewWrap')}},50)">
+                </div>
+                <div class="pf-divider"><span>OR UPLOAD FILE</span></div>
+                <label class="pf-file-btn">
+                    <span class="pf-file-btn-icon">🖼️</span>
+                    <span class="pf-file-btn-text">
+                        <div class="pf-file-btn-label">Choose Cover Image</div>
+                        <div class="pf-file-btn-hint" id="cover-file-hint">No file chosen</div>
+                    </span>
+                    <input type="file" name="cover_file" accept="image/*" onchange="updateFileName(this, 'cover-file-hint')">
+                </label>
+            </div>
+        </div>
+
+        <!-- SECTION 5: Screenshots -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">3</div>
+                <div class="pf-sec-label">Screenshots</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-field">
+                    <div class="pf-lbl">Paste ibb.co Links (one per line)</div>
+                    <textarea id="screenshotUrlsInput" name="screenshot_urls"
+                        placeholder="https://i.ibb.co/link1&#10;https://i.ibb.co/link2&#10;..."
+                        class="pf-input" style="min-height:90px; white-space:pre-wrap;"
+                        oninput="onSsUrlInput()" onpaste="setTimeout(onSsUrlInput,80)"></textarea>
+                </div>
+                <!-- Live screenshot thumbnails strip -->
+                <div class="pf-ss-strip" id="ssPreviewStrip"></div>
+                <div class="pf-divider"><span>AND / OR UPLOAD FILES</span></div>
+                <label class="pf-file-btn">
+                    <span class="pf-file-btn-icon">📸</span>
+                    <span class="pf-file-btn-text">
+                        <div class="pf-file-btn-label">Choose Screenshots</div>
+                        <div class="pf-file-btn-hint" id="ss-file-hint">No files chosen</div>
+                    </span>
+                    <input type="file" name="screenshot_files" accept="image/*" multiple onchange="updateFileName(this, 'ss-file-hint')">
+                </label>
+            </div>
+        </div>
+
+        <!-- SECTION 6: Videos -->
+        <div class="pf-section accent-border">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">4</div>
+                <div class="pf-sec-label">Videos / Episodes</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-search-row">
+                    <input type="text" id="videoSearchInput" placeholder="Search files in database..." class="pf-input"
+                        onkeydown="if(event.key==='Enter'){{ event.preventDefault(); searchVideosForPost(); }}">
+                    <button type="button" class="pf-search-btn" onclick="searchVideosForPost()">Search</button>
+                </div>
+                <div id="videoSearchResults" class="pf-search-results"></div>
+
+                <div class="pf-videos-label">Selected Videos / Episodes</div>
+                <div id="selectedVideosContainer">
+                    <div class="pf-videos-empty">No videos added yet. Search above to add files.</div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="pf-submit">Publish Post</button>
+    </form>
+</div>
+''' + POST_FORM_JS
+
+    return build_page("Create Post", body, "", "posts", role)
+
+
+# ─────────────────────────────────────────────────────────
+# ✏️ 2. ADMIN ROUTE: EDIT POST WIZARD (UI)
+# ─────────────────────────────────────────────────────────
+@post_routes.get('/admin/edit_post/{id}')
+async def edit_post_page(req):
+    role, _ = await get_auth(req)
+    if role != 'admin': return web.HTTPFound('/dashboard')
+
+    post_id = req.match_info['id']
+    post = await posts_col.find_one({"_id": ObjectId(post_id)})
+    if not post: return web.HTTPFound('/posts?err=Post not found')
+
+    title_val = html.escape(post.get('title', ''))
+    desc_val = html.escape(post.get('description', ''))
+    tags_val = html.escape(", ".join(post.get('tags', [])))
+    cover_url = post.get('cover_image', '')
+    ss_urls = "\n".join(post.get('screenshots', []))
+
+    err = req.query.get('err', '')
+    msg = req.query.get('msg', '')
+    err_html = f'<div class="pf-err">{html.escape(err)}</div>' if err else ''
+    msg_html = f'<div class="pf-msg">{html.escape(msg)}</div>' if msg else ''
+
+    # Build cover preview
+    if cover_url.startswith("TG_ID:"):
+        cover_img_src = f"/api/post/photo?id={cover_url.replace('TG_ID:', '')}"
+        cover_hint = "Telegram-hosted image (current)"
+    elif cover_url:
+        cover_img_src = cover_url
+        cover_hint = "External link (current)"
+    else:
+        cover_img_src = ""
+        cover_hint = "No cover image set"
+
+    cover_preview_html = f'<img src="{cover_img_src}" class="pf-cover-preview" alt="Current Cover" onerror="this.style.display=\'none\'">' if cover_img_src else ''
+    cover_input_val = cover_url if not cover_url.startswith("TG_ID:") else ""
+    cover_placeholder = cover_hint if cover_url.startswith("TG_ID:") else "https://i.ibb.co/..."
+
+    # Build existing video cards
+    video_cards_html = ""
+    for v in post.get('videos', []):
+        vid = v.get('file_id', '')
+        vheading = html.escape(v.get('heading', 'Download Links'))
+        vname = html.escape(v.get('custom_name', '1080p'))
+        video_cards_html += f'''
+        <div class="pf-vid-card">
+            <div class="pf-vid-card-head">
+                <span style="font-size:14px;">🎬</span>
+                <span class="pf-vid-card-name">Pre-saved media file</span>
+                <input type="hidden" name="video_id" value="{vid}">
+                <button type="button" class="pf-vid-del" onclick="this.closest('.pf-vid-card').remove(); checkEmpty();">✕</button>
+            </div>
+            <div class="pf-vid-card-body">
+                <div>
+                    <div class="pf-lbl">Group / Episode Name</div>
+                    <input type="text" name="video_heading" value="{vheading}" placeholder="e.g. Episode 1" class="pf-input" required>
+                </div>
+                <div>
+                    <div class="pf-lbl">Quality Label</div>
+                    <input type="text" name="video_name" value="{vname}" placeholder="e.g. 1080p" class="pf-input" style="color:var(--accent); font-weight:800;" required>
+                </div>
+            </div>
+        </div>'''
+
+    videos_container_content = video_cards_html if video_cards_html else '<div class="pf-videos-empty">No videos added yet. Search above to add files.</div>'
+
+    body = POST_FORM_CSS + f'''
+<div class="pf-wrap">
+    <div class="pf-header">
+        <a href="/post/{post_id}" class="pf-back">← Cancel</a>
+        <div class="pf-title">Edit Post</div>
+    </div>
+
+    {err_html}{msg_html}
+
+    <form action="/api/post/update" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="post_id" value="{post_id}">
+
+        <!-- SECTION 1: Basic Info -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">1</div>
+                <div class="pf-sec-label">Basic Information</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-field">
+                    <div class="pf-lbl">Post Title</div>
+                    <input type="text" name="title" value="{title_val}" class="pf-input" required>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">Short Description</div>
+                    <textarea name="description" class="pf-input" required>{desc_val}</textarea>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">Search Tags (comma separated)</div>
+                    <input type="text" name="tags" value="{tags_val}" class="pf-input">
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: Cover Image -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">2</div>
+                <div class="pf-sec-label">Cover Image</div>
+            </div>
+            <div class="pf-sec-body">
+                {cover_preview_html}
+                <!-- Live new-URL preview (shows when user types a new URL) -->
+                <div class="pf-url-preview-wrap" id="coverPreviewWrap">
+                    <img class="pf-url-preview-img" src="" alt="">
+                    <div class="pf-url-preview-badge loading">Loading...</div>
+                    <button type="button" class="pf-url-preview-clear" onclick="clearCoverPreview('coverUrlInput','coverPreviewWrap')" title="Clear">✕</button>
+                </div>
+                <div class="pf-field">
+                    <div class="pf-lbl">New Image URL (leave blank to keep current)</div>
+                    <input type="text" id="coverUrlInput" name="cover_url" value="{cover_input_val}" placeholder="{cover_placeholder}" class="pf-input"
+                        oninput="onCoverUrlInput('coverUrlInput','coverPreviewWrap')"
+                        onpaste="setTimeout(function(){{{{onCoverUrlInput('coverUrlInput','coverPreviewWrap')}}}},50)">
+                </div>
+                <div class="pf-divider"><span>OR UPLOAD NEW FILE</span></div>
+                <label class="pf-file-btn">
+                    <span class="pf-file-btn-icon">🖼️</span>
+                    <span class="pf-file-btn-text">
+                        <div class="pf-file-btn-label">Replace Cover Image</div>
+                        <div class="pf-file-btn-hint" id="cover-file-hint">No file chosen</div>
+                    </span>
+                    <input type="file" name="cover_file" accept="image/*" onchange="updateFileName(this, 'cover-file-hint')">
+                </label>
+            </div>
+        </div>
+
+        <!-- SECTION 3: Screenshots -->
+        <div class="pf-section">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">3</div>
+                <div class="pf-sec-label">Screenshots</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-field">
+                    <div class="pf-lbl">Image URLs (one per line)</div>
+                    <textarea id="screenshotUrlsInput" name="screenshot_urls" class="pf-input"
+                        style="min-height:90px; white-space:pre-wrap;"
+                        oninput="onSsUrlInput()" onpaste="setTimeout(onSsUrlInput,80)">{html.escape(ss_urls)}</textarea>
+                </div>
+                <!-- Live screenshot thumbnails strip -->
+                <div class="pf-ss-strip" id="ssPreviewStrip"></div>
+                <div class="pf-divider"><span>AND / OR UPLOAD NEW FILES</span></div>
+                <label class="pf-file-btn">
+                    <span class="pf-file-btn-icon">📸</span>
+                    <span class="pf-file-btn-text">
+                        <div class="pf-file-btn-label">Add More Screenshots</div>
+                        <div class="pf-file-btn-hint" id="ss-file-hint">No files chosen</div>
+                    </span>
+                    <input type="file" name="screenshot_files" accept="image/*" multiple onchange="updateFileName(this, 'ss-file-hint')">
+                </label>
+            </div>
+        </div>
+
+        <!-- SECTION 4: Videos -->
+        <div class="pf-section accent-border">
+            <div class="pf-sec-head">
+                <div class="pf-sec-num">4</div>
+                <div class="pf-sec-label">Videos / Episodes</div>
+            </div>
+            <div class="pf-sec-body">
+                <div class="pf-search-row">
+                    <input type="text" id="videoSearchInput" placeholder="Search and add more files..." class="pf-input"
+                        onkeydown="if(event.key==='Enter'){{ event.preventDefault(); searchVideosForPost(); }}">
+                    <button type="button" class="pf-search-btn" onclick="searchVideosForPost()">Search</button>
+                </div>
+                <div id="videoSearchResults" class="pf-search-results"></div>
+
+                <div class="pf-videos-label">Current Videos / Episodes</div>
+                <div id="selectedVideosContainer">
+                    {videos_container_content}
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="pf-submit">Save Changes</button>
+    </form>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {{
+    renderSsStrip();
+    var coverInput = document.getElementById('coverUrlInput');
+    if (coverInput && coverInput.value.trim()) {{
+        triggerCoverPreview('coverUrlInput', 'coverPreviewWrap');
+    }}
+}});
+</script>
+''' + POST_FORM_JS
+
+    return build_page("Edit Post", body, "", "posts", role)
+
+
+# ─────────────────────────────────────────────────────────
+# ⚙️ 3. API: PUBLISH & UPDATE POSTS
+# ─────────────────────────────────────────────────────────
+async def process_multipart_post(req, action="publish"):
+    reader = await req.multipart()
+    post_data = {"title": "", "description": "", "cover_image": "", "screenshots": [], "videos": [], "tags": []}
+    if action == "publish": post_data["created_at"] = int(time.time())
+    
+    screenshot_urls_raw = ""
+    temp_v_ids, temp_v_headings, temp_v_names = [], [], []
+    post_id = None
+    
+    while True:
+        part = await reader.next()
+        if part is None: break
+        p_name = part.name
+        
+        if p_name == 'post_id': post_id = (await part.read()).decode().strip()
+        elif p_name == 'title': post_data["title"] = (await part.read()).decode().strip()
+        elif p_name == 'description': post_data["description"] = (await part.read()).decode().strip()
+        elif p_name == 'tags': post_data["tags"] = [t.strip() for t in (await part.read()).decode().strip().split(",") if t.strip()]
+        
+        elif p_name == 'video_id': temp_v_ids.append((await part.read()).decode().strip())
+        elif p_name == 'video_heading': temp_v_headings.append((await part.read()).decode().strip())
+        elif p_name == 'video_name': temp_v_names.append((await part.read()).decode().strip())
+        
+        elif p_name == 'cover_url':
+            url = (await part.read()).decode().strip()
+            if url: post_data["cover_image"] = url
+        elif p_name == 'cover_file' and part.filename:
+            img_bytes = await part.read()
+            with io.BytesIO(img_bytes) as img_buf:
+                img_buf.name = "cover.jpg"
+                msg = await temp.BOT.send_photo(chat_id=THUMBNAIL_STORAGE_CHANNEL, photo=img_buf)
+                if msg and msg.photo:
+                    tg_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
+                    post_data["cover_image"] = f"TG_ID:{tg_id}"
+        elif p_name == 'screenshot_urls': screenshot_urls_raw = (await part.read()).decode().strip()
+        elif p_name == 'screenshot_files' and part.filename:
+            img_bytes = await part.read()
+            with io.BytesIO(img_bytes) as img_buf:
+                img_buf.name = f"ss_{int(time.time())}.jpg"
+                msg = await temp.BOT.send_photo(chat_id=THUMBNAIL_STORAGE_CHANNEL, photo=img_buf)
+                if msg and msg.photo:
+                    tg_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
+                    post_data["screenshots"].append(f"TG_ID:{tg_id}")
+
+    if post_data["cover_image"] and "ibb.co" in post_data["cover_image"]:
+        converted_cover = await convert_all_ibb_links([post_data["cover_image"]])
+        if converted_cover: post_data["cover_image"] = converted_cover[0]
+
+    if screenshot_urls_raw:
+        raw_urls = [u.strip() for u in screenshot_urls_raw.split('\n') if u.strip()]
+        direct_urls = await convert_all_ibb_links(raw_urls)
+        post_data["screenshots"].extend(direct_urls)
+        
+    for vid, vheading, vname in zip(temp_v_ids, temp_v_headings, temp_v_names):
+        if vid and vname: 
+            post_data["videos"].append({"file_id": vid, "heading": vheading or "Download Links", "custom_name": vname})
+        
+    return post_data, post_id
+
+@post_routes.post('/api/post/publish')
+async def api_publish_post(req):
+    role, _ = await get_auth(req)
+    if role != 'admin': return web.json_response({"error": "Unauthorized"}, status=403, dumps=fast_json)
+    try:
+        post_data, _ = await process_multipart_post(req, "publish")
+        await posts_col.insert_one(post_data)
+        return web.HTTPFound('/posts?msg=Post published successfully!')
+    except Exception as e: return web.HTTPFound(f'/admin/create_post?err=Server Error: {str(e)}')
+
+@post_routes.post('/api/post/update')
+async def api_update_post(req):
+    role, _ = await get_auth(req)
+    if role != 'admin': return web.HTTPFound('/dashboard')
+    try:
+        post_data, post_id = await process_multipart_post(req, "update")
+        if not post_id: return web.HTTPFound('/posts?err=Missing Post ID')
+        
+        if not post_data.get("cover_image"):
+            old_post = await posts_col.find_one({"_id": ObjectId(post_id)})
+            if old_post and old_post.get("cover_image"): post_data["cover_image"] = old_post["cover_image"]
+
+        await posts_col.update_one({"_id": ObjectId(post_id)}, {"$set": post_data})
+        return web.HTTPFound(f'/post/{post_id}?msg=Post updated successfully!')
+    except Exception as e: return web.HTTPFound(f'/posts?err=Server Error: {str(e)}')
+
+@post_routes.post('/api/post/delete')
+async def api_delete_post(req):
+    role, _ = await get_auth(req)
+    if role != 'admin': return web.json_response({"success": False})
+    try:
+        data = await req.json()
+        await posts_col.delete_one({"_id": ObjectId(data.get('post_id'))})
+        return web.json_response({"success": True})
+    except: return web.json_response({"success": False})
+
+# ─────────────────────────────────────────────────────────
+# 🖼️ 4. API: SERVE TELEGRAM IMAGES FOR POSTS
+# ─────────────────────────────────────────────────────────
+@post_routes.get('/api/post/photo')
+async def get_post_photo(req):
+    tg_id = req.query.get("id")
+    if not tg_id: return web.Response(status=400)
+    try:
+        file_data = await temp.BOT.download_media(tg_id, in_memory=True)
+        if not file_data: return web.Response(status=404)
+        body_bytes = file_data.getvalue()
+        file_data.close()
+        return web.Response(body=body_bytes, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000"})
+    except: return web.Response(status=500)
+    finally: gc.collect()
+
+# ─────────────────────────────────────────────────────────
+# 🌐 5. PUBLIC ROUTE: POSTS DIRECTORY GRID
+# ─────────────────────────────────────────────────────────
+@post_routes.get('/posts')
+async def posts_directory_page(req):
+    role, _ = await get_auth(req)
+    if not role: return web.HTTPFound('/login')
+    
+    all_posts = await posts_col.find({}).sort("created_at", -1).limit(21).to_list(length=21)
+    has_next_init = len(all_posts) > 20
+    all_posts = all_posts[:20]
+    
+    admin_btn = '''<button onclick="window.location.href='/admin/create_post'" style="background:var(--accent); color:#fff; border:none; padding:0 24px; border-radius:8px; font-weight:800; cursor:pointer; white-space:nowrap;">➕ Create</button>''' if role == 'admin' else ""
+    
+    search_ui = f'''<style>.dir-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }} @media(min-width: 768px) {{ .dir-grid {{ grid-template-columns: repeat(5, 1fr); gap: 20px; }} }} .search-box {{ background:var(--card); border:1px solid var(--border); padding:16px; border-radius:12px; margin-bottom:25px; box-shadow:0 4px 15px rgba(0,0,0,0.1); display:flex; gap:10px; }} .s-input {{ flex:1; background:var(--bg3); border:1px solid var(--border); padding:12px 16px; color:var(--text); border-radius:8px; outline:none; font-weight:600; font-size:14px; font-family:inherit; }} .pg-bar {{ display:flex; justify-content:center; align-items:center; gap:15px; margin-top:30px; }}</style><div class="search-box"><input type="text" id="post_q" class="s-input" placeholder="Search movies, series, posts..."><button onclick="resetPost(); searchPosts()" style="background:var(--bg4); color:var(--text); border:1px solid var(--border); padding:0 24px; border-radius:8px; font-weight:800; cursor:pointer;">Search</button>{admin_btn}</div>'''
+
+    post_items = ""
+    for p in all_posts:
+        cover = p.get("cover_image", "")
+        img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
+        post_items += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'"><div style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;"><img src="{img_src}" class="act-poster" loading="lazy"><div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:9px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2;">🎬 POST</div></div><div style="padding:12px; text-align:center;"><div style="font-size:13.5px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{html.escape(p.get("title", "Untitled"))}</div></div></div>'''
+    
+    initial_grid = f'<div id="post_grid_container" class="dir-grid">{post_items}</div>' if all_posts else '<div style="text-align:center; padding:60px 20px; color:var(--muted);">No posts found.</div>'
+
+    js_logic = f'''<div class="pg-bar" id="post_pg_box" style="display:{'flex' if has_next_init else 'none'};"><button class="pg-btn" id="post_pBtn" onclick="prevPost()" disabled>Previous</button><span class="pg-info" id="post_pgInfo" style="font-weight:800;">Page 1</span><button class="pg-btn" id="post_nBtn" onclick="nextPost()">Next</button></div><script>var pOff = 0, pLim = 20, pPage = 1, pNext = {str(has_next_init).lower()}; async function searchPosts() {{ var q = document.getElementById('post_q').value.trim(); var grid = document.getElementById('post_grid_container'); grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--muted); font-weight:bold;">🔄 Searching Catalog...</div>'; try {{ var res = await fetch(`/api/posts/search?q=${{encodeURIComponent(q)}}&offset=${{pOff}}`); var data = await res.json(); grid.innerHTML = data.html; staggerCards(grid); pNext = data.has_next; updatePgUI(); }} catch(e) {{ grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--accent);">Error loading posts!</div>'; }} }} function updatePgUI() {{ var box = document.getElementById('post_pg_box'); box.style.display = (pOff === 0 && !pNext) ? 'none' : 'flex'; document.getElementById('post_pBtn').disabled = (pOff === 0); document.getElementById('post_nBtn').disabled = !pNext; document.getElementById('post_pgInfo').innerText = 'Page ' + pPage; }} function resetPost() {{ pOff = 0; pPage = 1; }} function nextPost() {{ if(pNext) {{ pOff += pLim; pPage++; searchPosts(); window.scrollTo(0, 50); }} }} function prevPost() {{ if(pOff > 0) {{ pOff = Math.max(0, pOff - pLim); pPage--; searchPosts(); window.scrollTo(0, 50); }} }} document.getElementById('post_q').addEventListener('keydown', e => {{ if(e.key === 'Enter') {{ resetPost(); searchPosts(); }} }}); document.addEventListener("DOMContentLoaded", () => {{ var grid = document.getElementById('post_grid_container'); if(grid && typeof staggerCards === 'function') staggerCards(grid); }});</script>'''
+
+    return build_page("Posts Catalog", f'<div class="main" style="padding-top:20px; max-width:1100px; margin:0 auto; padding-left:20px; padding-right:20px;">{search_ui}{initial_grid}{js_logic}</div>', "", "posts", role)
+
+@post_routes.get('/api/posts/search')
+async def api_posts_search(req):
+    role, _ = await get_auth(req)
+    if not role: return web.json_response({"html": ""}, dumps=fast_json)
+    q = req.query.get("q", "").strip()
+    try: offset = int(req.query.get("offset", 0))
+    except: offset = 0
+    lim = 20
+    query = {}
+    if q: 
+        safe_q = re.escape(q)
+        query["$or"] = [{"title": {"$regex": safe_q, "$options": "i"}}, {"tags": {"$regex": safe_q, "$options": "i"}}]
+        
+    docs = await posts_col.find(query).sort("created_at", -1).skip(offset).limit(lim + 1).to_list(length=lim + 1)
+    has_next = len(docs) > lim
+    docs = docs[:lim]
+    
+    if not docs: return web.json_response({"html": '<div style="grid-column:1/-1; text-align:center; color:var(--muted); padding:40px;">No posts matching your search.</div>', "has_next": False}, dumps=fast_json)
+        
+    html_out = ""
+    for p in docs:
+        cover = p.get("cover_image", "")
+        img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
+        html_out += f'''<div class="act-card card-enter" onclick="window.location.href='/post/{str(p["_id"])}'"><div style="position:relative; padding-top:135%; background:var(--bg3); overflow:hidden;"><img src="{img_src}" class="act-poster" loading="lazy"><div style="position:absolute; top:8px; left:8px; background:rgba(229,9,20,0.9); color:#fff; font-size:9px; padding:4px 8px; border-radius:4px; font-weight:800; backdrop-filter:blur(4px); z-index:2;">🎬 POST</div></div><div style="padding:12px; text-align:center;"><div style="font-size:13.5px; font-weight:800; color:var(--text); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">{html.escape(p.get("title", "Untitled"))}</div></div></div>'''
+            
+    return web.json_response({"html": html_out, "has_next": has_next}, dumps=fast_json)
+
+# ─────────────────────────────────────────────────────────
+# 🍿 6. PUBLIC ROUTE: SINGLE POST VIEW (Episodes Grouped)
+# ─────────────────────────────────────────────────────────
+@post_routes.get('/post/{id}')
+async def single_post_display(req):
+    role, _ = await get_auth(req)
+    if not role: return web.HTTPFound('/login')
+    
+    try:
+        post = await posts_col.find_one({"_id": ObjectId(req.match_info['id'])})
+        if not post: return web.Response(text="Post Not Found", status=404)
+    except: return web.Response(text="Invalid ID", status=400)
+    
+    cover = post.get("cover_image", "")
+    img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
+    
+    tags_html = "".join([f'<span style="background:var(--bg3); border:1px solid var(--border); color:var(--muted); font-size:11px; padding:4px 10px; border-radius:4px; font-weight:700;">#{html.escape(t)}</span>' for t in post.get("tags", [])])
+    tags_div = f'<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">{tags_html}</div>' if tags_html else ""
+    
+    video_buttons = ""
+    videos = post.get("videos", [])
+    if not videos:
+        video_buttons = '<div style="color:var(--muted); font-size:14px; font-weight:bold;">No media attached.</div>'
+    else:
+        grouped_vids = {}
+        for v in videos:
+            h = v.get("heading", "Download Links")
+            if h not in grouped_vids: grouped_vids[h] = []
+            grouped_vids[h].append(v)
+            
+        for heading, v_list in grouped_vids.items():
+            video_buttons += f'''
+            <div style="margin-bottom:20px; background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:15px; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                <div style="font-size:16px; font-weight:900; color:var(--text); margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+                    <span style="background:var(--accent); width:5px; height:18px; border-radius:4px;"></span>
+                    {html.escape(heading)}
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:10px; padding-left:15px;">'''
+            
+            for v in v_list:
+                vid_id = v.get('file_id')
+                v_name = html.escape(v.get('custom_name', 'Play'))
+                video_buttons += f'<a href="/setup_stream?file_id={vid_id}&mode=watch" target="_blank" style="background:var(--card); border:1px solid var(--border); color:var(--text); font-weight:800; font-size:13px; text-decoration:none; padding:10px 20px; border-radius:6px; transition:0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.2);" onmouseover="this.style.background=\'var(--accent)\'; this.style.borderColor=\'var(--accent)\'; this.style.color=\'#fff\'; this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.background=\'var(--card)\'; this.style.borderColor=\'var(--border)\'; this.style.color=\'var(--text)\'; this.style.transform=\'translateY(0)\'">🎬 {v_name}</a>'
+            
+            video_buttons += '</div></div>'
+    
+    ss_html = ""
+    for ss in post.get("screenshots", []):
+        s_src = f"/api/post/photo?id={ss.replace('TG_ID:', '')}" if ss.startswith("TG_ID:") else ss
+        ss_html += f'<div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; aspect-ratio:16/9; background:var(--bg3); box-shadow:0 4px 15px rgba(0,0,0,0.2);"><img src="{s_src}" style="width:100%; height:100%; object-fit:cover; cursor:pointer; transition:0.3s;" onmouseover="this.style.transform=\'scale(1.03)\'" onmouseout="this.style.transform=\'scale(1)\'" onclick="window.open(this.src, \'_blank\')"></div>'
+    
+    gallery_grid = f'<h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px; margin-top:40px;">📸 Screenshots</h3><div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:20px;">{ss_html}</div>' if ss_html else ""
+
+    admin_actions = f'''
+    <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); display:flex; gap:10px;">
+        <a href="/admin/edit_post/{str(post['_id'])}" style="background:var(--bg4); border:1px solid var(--border); color:var(--text); padding:12px 24px; border-radius:8px; font-weight:800; text-decoration:none; font-size:14px;">✏️ Edit Post</a>
+        <button onclick="if(confirm('Are you sure you want to delete this post?')) {{ fetch('/api/post/delete', {{method:'POST', body:JSON.stringify({{post_id:'{str(post['_id'])}'}})}}).then(r=>r.json()).then(d=>{{ if(d.success) window.location.href='/posts'; else alert('Failed to delete'); }}) }}" style="background:rgba(160,8,8,0.8); border:1px solid rgba(229,9,20,0.5); color:#fff; padding:12px 24px; border-radius:8px; font-weight:800; cursor:pointer; font-size:14px;">🗑️ Delete</button>
+    </div>
+    ''' if role == 'admin' else ""
+
+    page_body = f'''
+    <div class="main" style="max-width:950px; margin:30px auto; padding:0 20px;">
+        <div style="margin-bottom:20px;">
+            <a href="/posts" style="color:var(--muted); text-decoration:none; font-size:14px; font-weight:800;">← Back to Catalog</a>
+        </div>
+        
+        <div style="background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.3);">
+            <div style="display:grid; grid-template-columns:200px 1fr; gap:0;">
+                <div style="background:var(--bg3);">
+                    <img src="{img_src}" style="width:100%; height:100%; object-fit:cover; display:block; min-height:250px;" onerror="this.style.display='none'">
+                </div>
+                <div style="padding:25px;">
+                    <h1 style="font-size:24px; font-weight:900; color:var(--text); margin-bottom:10px; line-height:1.3;">{html.escape(post.get("title", "Untitled"))}</h1>
+                    <p style="color:var(--muted); font-size:14px; line-height:1.6; margin-bottom:10px;">{html.escape(post.get("description", ""))}</p>
+                    {tags_div}
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top:30px;">
+            <h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px;">🎬 Download Links</h3>
+            {video_buttons}
+        </div>
+        
+        {gallery_grid}
+        {admin_actions}
+    </div>
+    '''
+
+    return build_page(post.get("title", "Post"), page_body, "", "posts", role)
