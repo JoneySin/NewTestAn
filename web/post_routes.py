@@ -512,7 +512,7 @@ async def api_posts_search(req):
     return web.json_response({"html": html_out, "has_next": has_next}, dumps=fast_json)
 
 # ─────────────────────────────────────────────────────────
-# 🍿 6. PUBLIC ROUTE: SINGLE POST VIEW (Premium Custom View)
+# 🍿 6. PUBLIC ROUTE: SINGLE POST VIEW (Screenshot Style Layout)
 # ─────────────────────────────────────────────────────────
 @post_routes.get('/post/{id}')
 async def single_post_display(req):
@@ -527,10 +527,11 @@ async def single_post_display(req):
     cover = post.get("cover_image", "")
     img_src = f"/api/post/photo?id={cover.replace('TG_ID:', '')}" if cover.startswith("TG_ID:") else cover
     
-    tags_html = "".join([f'<span style="background:var(--bg3); border:1px solid var(--border); color:var(--muted); font-size:11px; padding:4px 10px; border-radius:4px; font-weight:700;">#{html.escape(t)}</span>' for t in post.get("tags", [])])
-    tags_div = f'<div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:12px;">{tags_html}</div>' if tags_html else ""
+    # 📌 Tags Style Updated to match screenshot (dark inner box)
+    tags_html = "".join([f'<span style="background:var(--bg4); border:1px solid var(--border); color:var(--text); font-size:12px; padding:5px 12px; border-radius:6px; font-weight:700;">#{html.escape(t)}</span>' for t in post.get("tags", [])])
+    tags_div = f'<div style="display:flex; flex-wrap:wrap; gap:10px; background:var(--bg); padding:15px; border-radius:8px; margin-top:15px; margin-bottom:15px;">{tags_html}</div>' if tags_html else ""
     
-    # 🍿 Premium Netflix Style Layout
+    # 🍿 Premium Netflix Style Episodes Layout
     video_buttons = ""
     videos = post.get("videos", [])
     if not videos:
@@ -563,9 +564,9 @@ async def single_post_display(req):
         s_src = f"/api/post/photo?id={ss.replace('TG_ID:', '')}" if ss.startswith("TG_ID:") else ss
         ss_html += f'<div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; aspect-ratio:16/9; background:var(--bg3); box-shadow:0 4px 15px rgba(0,0,0,0.2);"><img src="{s_src}" style="width:100%; height:100%; object-fit:cover; cursor:pointer; transition:0.3s;" onmouseover="this.style.transform=\'scale(1.03)\'" onmouseout="this.style.transform=\'scale(1)\'" onclick="window.open(this.src, \'_blank\')"></div>'
     
-    # 📸 Screenshots Grid (बिना बाहरी कार्ड बॉक्स के, बिल्कुल साफ और बड़े आकार में)
+    # 📸 Screenshots Grid (No Box)
     gallery_section = f'''
-    <h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px; margin-top:40px;">📸 Screenshots</h3>
+    <h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px; margin-top:40px; display:flex; align-items:center; gap:10px;">📸 Screenshots</h3>
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">{ss_html}</div>
     ''' if ss_html else ""
 
@@ -578,39 +579,43 @@ async def single_post_display(req):
 
     page_body = f'''
     <style>
-        .step-card {{ background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:25px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1); }}
-        .step-body {{ padding:20px; }}
-        
-        .ep-btn {{ background:var(--card); border:1px solid var(--accent); color:var(--accent); font-weight:800; font-size:13px; text-decoration:none; padding:10px 20px; border-radius:6px; transition:0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.2); display:inline-block; }}
+        .ep-btn {{ background:var(--bg); border:1px solid var(--accent); color:var(--accent); font-weight:800; font-size:13px; text-decoration:none; padding:10px 20px; border-radius:6px; transition:0.2s; box-shadow:0 4px 10px rgba(0,0,0,0.2); display:inline-block; }}
         .ep-btn:hover {{ background:var(--accent); color:#fff; transform:translateY(-2px); }}
         .ep-btn:active {{ background:#fff !important; color:var(--accent) !important; border-color:#fff !important; transform:scale(0.92); transition:0s; }}
+        
+        /* 🔥 Hero Section Flexbox Layout */
+        .hero-section {{ display:flex; flex-wrap:wrap; gap:30px; margin-bottom:35px; align-items:flex-start; }}
+        .hero-poster {{ flex:1 1 250px; max-width:320px; margin:0 auto; width:100%; aspect-ratio:3/4; overflow:hidden; border-radius:12px; box-shadow:0 12px 35px rgba(0,0,0,0.4); border:1px solid var(--border); }}
+        .hero-poster img {{ width:100%; height:100%; object-fit:cover; }}
+        .hero-details {{ flex:2 1 400px; background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:30px; box-shadow:0 4px 15px rgba(0,0,0,0.1); }}
+        
+        @media(max-width:768px) {{
+            .hero-poster {{ max-width:280px; }}
+            .hero-details {{ padding:20px; }}
+        }}
     </style>
 
-    <div class="main" style="max-width:850px; margin:30px auto; padding:0 20px;">
+    <div class="main" style="max-width:950px; margin:30px auto; padding:0 20px;">
         <div style="display:flex; align-items:center; gap:15px; margin-bottom:25px;">
             <a href="/posts" style="background:var(--bg3); color:var(--text); text-decoration:none; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px; border:1px solid var(--border); transition:0.2s;">← Catalog</a>
             <h2 style="font-size:22px; font-weight:800; color:var(--text); margin:0;">View Post</h2>
         </div>
         
-        <div class="main-card step-card">
-             <div class="step-body" style="padding:0;">
-                 <div style="display:flex; flex-direction:column; gap:0;">
-                     <div style="width:100%; max-width:380px; aspect-ratio:3/4; overflow:hidden; border-radius:12px; margin:25px auto 10px auto; box-shadow:0 12px 35px rgba(0,0,0,0.4); border:1px solid var(--border);">
-                         <img src="{img_src}" style="width:100%; height:100%; object-fit:cover;">
-                     </div>
-                     <div style="padding:25px 30px;">
-                         <h1 style="font-size:30px; font-weight:900; color:var(--text); margin:0 0 10px 0;">{html.escape(post.get("title", ""))}</h1>
-                         {tags_div}
-                         <div style="font-size:15px; color:var(--text); line-height:1.7; margin-top:20px; white-space:pre-line; font-weight:500;">
-                             {html.escape(post.get("description", ""))}
-                         </div>
-                     </div>
-                 </div>
-             </div>
+        <div class="hero-section">
+            <div class="hero-poster">
+                <img src="{img_src}" alt="Poster">
+            </div>
+            <div class="hero-details">
+                <h1 style="font-size:32px; font-weight:900; color:var(--text); margin:0;">{html.escape(post.get("title", ""))}</h1>
+                {tags_div}
+                <div style="font-size:15px; color:var(--muted); line-height:1.7; margin-top:10px; white-space:pre-line; font-weight:500;">
+                    {html.escape(post.get("description", ""))}
+                </div>
+            </div>
         </div>
 
-        <div style="margin-bottom:25px; margin-top:35px;">
-            <h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:25px;">🍿 Episodes / Download Links</h3>
+        <div style="margin-bottom:25px;">
+            <h3 style="font-size:20px; font-weight:800; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:25px; display:flex; align-items:center; gap:10px;">🍿 Episodes / Download Links</h3>
             {video_buttons}
         </div>
         
