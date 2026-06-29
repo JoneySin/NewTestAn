@@ -1,4 +1,6 @@
 import io, gc, time, html, re
+import asyncio
+import aiohttp
 import orjson
 from aiohttp import web
 from bson.objectid import ObjectId
@@ -15,6 +17,33 @@ posts_col = motor_db.db["Posts"]
 # ─────────────────────────────────────────────────────────
 def fast_json(data):
     return orjson.dumps(data).decode('utf-8')
+
+# ─────────────────────────────────────────────────────────
+# 🛠️ ImgBB Auto-Converter Helper Functions
+# ─────────────────────────────────────────────────────────
+async def fetch_direct_ibb_url(session, url):
+    url = url.strip()
+    if not url: return None
+    # अगर यह ImgBB का Viewer लिंक है (जिसमें i.ibb.co नहीं है)
+    if "ibb.co" in url and "i.ibb.co" not in url:
+        try:
+            async with session.get(url, timeout=5) as resp:
+                if resp.status == 200:
+                    html_content = await resp.text()
+                    # HTML सोर्स से डायरेक्ट इमेज लिंक (og:image) निकालना
+                    match = re.search(r'<meta property="og:image" content="([^"]+)"', html_content)
+                    if match:
+                        return match.group(1)
+        except Exception:
+            pass
+    return url
+
+async def convert_all_ibb_links(urls):
+    """सारे लिंक्स को एक साथ (Concurrently) कन्वर्ट करता है ताकि सर्वर स्लो न हो"""
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_direct_ibb_url(session, u) for u in urls if u.strip()]
+        results = await asyncio.gather(*tasks)
+        return [r for r in results if r]
 
 # ─────────────────────────────────────────────────────────
 # 📝 1. ADMIN ROUTE: CREATE POST WIZARD (UI)
@@ -54,7 +83,7 @@ async def create_post_page(req):
 
             <div class="step-box">
                 <div class="scard-label">4. Cover Image</div>
-                <input type="url" name="cover_url" placeholder="Paste ibb.co Link (Optional)" class="em-input" style="margin-bottom:10px;">
+                <input type="url" name="cover_url" placeholder="Paste ibb.co Link (Viewer or Direct)" class="em-input" style="margin-bottom:10px;">
                 <div style="text-align:center; color:var(--muted); margin-bottom:10px; font-weight:800; font-size:12px;">OR UPLOAD FILE</div>
                 <input type="file" name="cover_file" accept="image/*" class="em-input" style="padding:8px;">
             </div>
@@ -141,7 +170,7 @@ async def create_post_page(req):
     return build_page("Create Post", form_wrapper("New Post", html_content, req.query.get('err',''), req.query.get('msg','')), "login-bg", "posts", role)
 
 # ─────────────────────────────────────────────────────────
-# ⚙️ 2. API: PUBLISH POST (Handles Multipart, Files, arrays)
+# ⚙️ 2. API: PUBLISH POST (With ImgBB Auto-Converter)
 # ─────────────────────────────────────────────────────────
 @post_routes.post('/api/post/publish')
 async def api_publish_post(req):
@@ -198,8 +227,17 @@ async def api_publish_post(req):
                         tg_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
                         post_data["screenshots"].append(f"TG_ID:{tg_id}")
 
+        # 🚀 1. Cover Image Auto-Convert Logic
+        if post_data["cover_image"] and "ibb.co" in post_data["cover_image"]:
+            converted_cover = await convert_all_ibb_links([post_data["cover_image"]])
+            if converted_cover:
+                post_data["cover_image"] = converted_cover[0]
+
+        # 🚀 2. Screenshots Auto-Convert Logic
         if screenshot_urls_raw:
-            post_data["screenshots"].extend([u.strip() for u in screenshot_urls_raw.split('\n') if u.strip()])
+            raw_urls = [u.strip() for u in screenshot_urls_raw.split('\n') if u.strip()]
+            direct_urls = await convert_all_ibb_links(raw_urls)
+            post_data["screenshots"].extend(direct_urls)
             
         for vid, vname in zip(temp_v_ids, temp_v_names):
             if vid and vname:
@@ -311,7 +349,14 @@ async def posts_directory_page(req):
     function resetPost() {{ pOff = 0; pPage = 1; }}
     function nextPost() {{ if(pNext) {{ pOff += pLim; pPage++; searchPosts(); window.scrollTo(0, 50); }} }}
     function prevPost() {{ if(pOff > 0) {{ pOff = Math.max(0, pOff - pLim); pPage--; searchPosts(); window.scrollTo(0, 50); }} }}
+    
     document.getElementById('post_q').addEventListener('keydown', e => {{ if(e.key === 'Enter') {{ resetPost(); searchPosts(); }} }});
+
+    // पेज लोड होते ही ग्रिड एनिमेशन चालू करने के लिए 🚀
+    document.addEventListener("DOMContentLoaded", () => {{
+        var grid = document.getElementById('post_grid_container');
+        if(grid && typeof staggerCards === 'function') staggerCards(grid);
+    }});
     </script>
     '''
 
