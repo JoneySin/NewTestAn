@@ -41,6 +41,71 @@ async def convert_all_ibb_links(urls):
         return [r for r in results if r]
 
 # ─────────────────────────────────────────────────────────
+# 🎨 SHARED WIZARD CSS + JS (DRY: Create aur Edit page दोनों इसे reuse करते हैं)
+# Module-load पर एक बार बनता है, हर request पर सिर्फ़ string-embed होता है (Koyeb-friendly)
+# ─────────────────────────────────────────────────────────
+POST_WIZARD_CSS = '''
+    <style>
+        .page-header { display:flex; align-items:center; gap:15px; margin-bottom:25px; }
+        .back-btn { background:var(--bg3); color:var(--text); text-decoration:none; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px; border:1px solid var(--border); transition:0.2s; display:inline-flex; align-items:center; }
+        .back-btn:hover { background:var(--bg4); }
+        .page-title { font-size:22px; font-weight:800; color:var(--text); margin:0; }
+        
+        .step-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
+        .step-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+        .step-num { background:var(--bg4); color:var(--text); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:800; font-size:13px; }
+        .step-title { font-weight:800; font-size:13px; letter-spacing:1px; color:var(--text); text-transform:uppercase; }
+        .step-body { padding:20px; }
+        
+        .s-label { display:block; font-size:11px; font-weight:800; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+        .s-input { width:100%; background:var(--bg); border:1px solid transparent; padding:14px; color:var(--text); border-radius:8px; margin-bottom:18px; outline:none; transition:0.2s; font-size:14px; font-weight:500; font-family:inherit; }
+        .s-input:focus { border-color:var(--accent); }
+        .s-input::placeholder { color:var(--muted); opacity:0.6; }
+        
+        .submit-btn { width:100%; background:var(--accent); color:#fff; border:none; padding:16px; border-radius:8px; font-weight:800; font-size:15px; cursor:pointer; transition:0.2s; letter-spacing:0.5px; margin-bottom:30px; }
+        .submit-btn:hover { background:var(--accent-hover); transform:translateY(-2px); }
+    </style>
+'''
+
+# 🔧 JS में {{f.file_id}} jaise placeholders हैं — इन्हें f-string मानने से बचाने के लिए
+# यह constant सीधा JS string है (कोई .format()/f-string नहीं), इसलिए ${...} literal ही रहता है।
+POST_WIZARD_JS = '''
+    <script>
+    async function searchVideosForPost() {
+        const q = document.getElementById('videoSearchInput').value.trim();
+        if(!q) return;
+        const resDiv = document.getElementById('videoSearchResults');
+        resDiv.style.display = 'block'; resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">🔍 Searching...</div>';
+        try {
+            const response = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=none');
+            const data = await response.json();
+            if(!data.results || data.results.length === 0) { resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">❌ No files found.</div>'; return; }
+            let html = '';
+            data.results.forEach(f => {
+                const safeName = f.name.replace(/'/g, "\\\\'").replace(/"/g, "&quot;");
+                html += `<div style="padding:12px 15px; border-bottom:1px solid var(--border); cursor:pointer;" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'" onclick="addVideoToPost('${f.file_id}', '${safeName}')"><div style="font-weight:700; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.name}</div><div style="font-size:11px; color:var(--muted); margin-top:4px;">${f.size}</div></div>`;
+            });
+            resDiv.innerHTML = html;
+        } catch(e) { resDiv.innerHTML = '<div style="padding:15px; color:var(--accent); text-align:center;">⚠️ Error!</div>'; }
+    }
+    function addVideoToPost(fileId, fileName) {
+        document.getElementById('videoSearchResults').style.display = 'none';
+        const container = document.getElementById('selectedVideosContainer');
+        if(container.innerHTML.includes('No files selected yet.')) container.innerHTML = '';
+        const div = document.createElement('div');
+        div.style.cssText = "background:var(--bg); border:1px solid var(--border); padding:15px; border-radius:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;";
+        div.innerHTML = `
+            <div style="width:100%; font-size:12px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">📁 ${fileName}</div>
+            <input type="hidden" name="video_id" value="${fileId}">
+            <input type="text" name="video_heading" placeholder="Group Name (e.g. Ep 1)" class="s-input" style="margin-bottom:0; flex:1; min-width:120px; padding:10px;" required>
+            <input type="text" name="video_name" placeholder="Quality (e.g. 1080p)" class="s-input" style="margin-bottom:0; flex:1; min-width:100px; padding:10px; color:var(--accent);" required>
+            <button type="button" onclick="this.parentElement.remove()" style="background:var(--bg3); color:var(--muted); border:1px solid var(--border); padding:10px 15px; border-radius:6px; cursor:pointer; font-weight:bold;">✖</button>`;
+        container.appendChild(div);
+    }
+    </script>
+'''
+
+# ─────────────────────────────────────────────────────────
 # 📝 1. ADMIN ROUTE: CREATE POST WIZARD (UI)
 # ─────────────────────────────────────────────────────────
 @post_routes.get('/admin/create_post')
@@ -53,28 +118,7 @@ async def create_post_page(req):
     err_html = f'<div class="err-box" style="margin-bottom:20px;">{err}</div>' if err else ""
     msg_html = f'<div class="success-box" style="margin-bottom:20px;">{msg}</div>' if msg else ""
     
-    html_content = f'''
-    <style>
-        .page-header {{ display:flex; align-items:center; gap:15px; margin-bottom:25px; }}
-        .back-btn {{ background:var(--bg3); color:var(--text); text-decoration:none; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px; border:1px solid var(--border); transition:0.2s; display:inline-flex; align-items:center; }}
-        .back-btn:hover {{ background:var(--bg4); }}
-        .page-title {{ font-size:22px; font-weight:800; color:var(--text); margin:0; }}
-        
-        .step-card {{ background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1); }}
-        .step-header {{ padding:15px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }}
-        .step-num {{ background:var(--bg4); color:var(--text); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:800; font-size:13px; }}
-        .step-title {{ font-weight:800; font-size:13px; letter-spacing:1px; color:var(--text); text-transform:uppercase; }}
-        .step-body {{ padding:20px; }}
-        
-        .s-label {{ display:block; font-size:11px; font-weight:800; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }}
-        .s-input {{ width:100%; background:var(--bg); border:1px solid transparent; padding:14px; color:var(--text); border-radius:8px; margin-bottom:18px; outline:none; transition:0.2s; font-size:14px; font-weight:500; font-family:inherit; }}
-        .s-input:focus {{ border-color:var(--accent); }}
-        .s-input::placeholder {{ color:var(--muted); opacity:0.6; }}
-        
-        .submit-btn {{ width:100%; background:var(--accent); color:#fff; border:none; padding:16px; border-radius:8px; font-weight:800; font-size:15px; cursor:pointer; transition:0.2s; letter-spacing:0.5px; margin-bottom:30px; }}
-        .submit-btn:hover {{ background:var(--accent-hover); transform:translateY(-2px); }}
-    </style>
-
+    html_content = POST_WIZARD_CSS + f'''
     <div class="main" style="max-width:700px; margin:0 auto; padding:30px 20px;">
         <div class="page-header">
             <a href="/posts" class="back-btn">← Cancel</a>
@@ -147,41 +191,7 @@ async def create_post_page(req):
             <button type="submit" class="submit-btn">Publish Post</button>
         </form>
     </div>
-
-    <script>
-    async function searchVideosForPost() {{
-        const q = document.getElementById('videoSearchInput').value.trim();
-        if(!q) return;
-        const resDiv = document.getElementById('videoSearchResults');
-        resDiv.style.display = 'block'; resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">🔍 Searching...</div>';
-        try {{
-            const response = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=none');
-            const data = await response.json();
-            if(!data.results || data.results.length === 0) {{ resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">❌ No files found.</div>'; return; }}
-            let html = '';
-            data.results.forEach(f => {{
-                const safeName = f.name.replace(/'/g, "\\\\'").replace(/"/g, "&quot;");
-                html += `<div style="padding:12px 15px; border-bottom:1px solid var(--border); cursor:pointer;" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'" onclick="addVideoToPost('${{f.file_id}}', '${{safeName}}')"><div style="font-weight:700; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${{f.name}}</div><div style="font-size:11px; color:var(--muted); margin-top:4px;">${{f.size}}</div></div>`;
-            }});
-            resDiv.innerHTML = html;
-        }} catch(e) {{ resDiv.innerHTML = '<div style="padding:15px; color:var(--accent); text-align:center;">⚠️ Error!</div>'; }}
-    }}
-    function addVideoToPost(fileId, fileName) {{
-        document.getElementById('videoSearchResults').style.display = 'none';
-        const container = document.getElementById('selectedVideosContainer');
-        if(container.innerHTML.includes('No files selected yet.')) container.innerHTML = '';
-        const div = document.createElement('div');
-        div.style.cssText = "background:var(--bg); border:1px solid var(--border); padding:15px; border-radius:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;";
-        div.innerHTML = `
-            <div style="width:100%; font-size:12px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">📁 ${{fileName}}</div>
-            <input type="hidden" name="video_id" value="${{fileId}}">
-            <input type="text" name="video_heading" placeholder="Group Name (e.g. Ep 1)" class="s-input" style="margin-bottom:0; flex:1; min-width:120px; padding:10px;" required>
-            <input type="text" name="video_name" placeholder="Quality (e.g. 1080p)" class="s-input" style="margin-bottom:0; flex:1; min-width:100px; padding:10px; color:var(--accent);" required>
-            <button type="button" onclick="this.parentElement.remove()" style="background:var(--bg3); color:var(--muted); border:1px solid var(--border); padding:10px 15px; border-radius:6px; cursor:pointer; font-weight:bold;">✖</button>`;
-        container.appendChild(div);
-    }}
-    </script>
-    '''
+    ''' + POST_WIZARD_JS
     return build_page("Create Post", html_content, "", "posts", role)
 
 # ─────────────────────────────────────────────────────────
@@ -226,28 +236,7 @@ async def edit_post_page(req):
     if not video_html:
         video_html = '<div style="color:var(--muted); font-size:12px; text-align:center; padding:15px; border:1px dashed var(--border); border-radius:8px;">No files selected yet.</div>'
 
-    html_content = f'''
-    <style>
-        .page-header {{ display:flex; align-items:center; gap:15px; margin-bottom:25px; }}
-        .back-btn {{ background:var(--bg3); color:var(--text); text-decoration:none; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px; border:1px solid var(--border); transition:0.2s; display:inline-flex; align-items:center; }}
-        .back-btn:hover {{ background:var(--bg4); }}
-        .page-title {{ font-size:22px; font-weight:800; color:var(--text); margin:0; }}
-        
-        .step-card {{ background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1); }}
-        .step-header {{ padding:15px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }}
-        .step-num {{ background:var(--bg4); color:var(--text); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:800; font-size:13px; }}
-        .step-title {{ font-weight:800; font-size:13px; letter-spacing:1px; color:var(--text); text-transform:uppercase; }}
-        .step-body {{ padding:20px; }}
-        
-        .s-label {{ display:block; font-size:11px; font-weight:800; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }}
-        .s-input {{ width:100%; background:var(--bg); border:1px solid transparent; padding:14px; color:var(--text); border-radius:8px; margin-bottom:18px; outline:none; transition:0.2s; font-size:14px; font-weight:500; font-family:inherit; }}
-        .s-input:focus {{ border-color:var(--accent); }}
-        .s-input::placeholder {{ color:var(--muted); opacity:0.6; }}
-        
-        .submit-btn {{ width:100%; background:var(--accent); color:#fff; border:none; padding:16px; border-radius:8px; font-weight:800; font-size:15px; cursor:pointer; transition:0.2s; letter-spacing:0.5px; margin-bottom:30px; }}
-        .submit-btn:hover {{ background:var(--accent-hover); transform:translateY(-2px); }}
-    </style>
-
+    html_content = POST_WIZARD_CSS + f'''
     <div class="main" style="max-width:700px; margin:0 auto; padding:30px 20px;">
         <div class="page-header">
             <a href="/post/{post_id}" class="back-btn">← Cancel</a>
@@ -315,41 +304,7 @@ async def edit_post_page(req):
             <button type="submit" class="submit-btn">💾 Save Changes</button>
         </form>
     </div>
-    
-    <script>
-    async function searchVideosForPost() {{
-        const q = document.getElementById('videoSearchInput').value.trim();
-        if(!q) return;
-        const resDiv = document.getElementById('videoSearchResults');
-        resDiv.style.display = 'block'; resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">🔍 Searching...</div>';
-        try {{
-            const response = await fetch('/api/search?q=' + encodeURIComponent(q) + '&mode=none');
-            const data = await response.json();
-            if(!data.results || data.results.length === 0) {{ resDiv.innerHTML = '<div style="padding:15px; color:var(--muted); text-align:center; font-size:12px;">❌ No files found.</div>'; return; }}
-            let html = '';
-            data.results.forEach(f => {{
-                const safeName = f.name.replace(/'/g, "\\\\'").replace(/"/g, "&quot;");
-                html += `<div style="padding:12px 15px; border-bottom:1px solid var(--border); cursor:pointer;" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'" onclick="addVideoToPost('${{f.file_id}}', '${{safeName}}')"><div style="font-weight:700; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${{f.name}}</div></div>`;
-            }});
-            resDiv.innerHTML = html;
-        }} catch(e) {{ resDiv.innerHTML = '<div style="padding:15px; color:var(--accent); text-align:center;">⚠️ Error!</div>'; }}
-    }}
-    function addVideoToPost(fileId, fileName) {{
-        document.getElementById('videoSearchResults').style.display = 'none';
-        const container = document.getElementById('selectedVideosContainer');
-        if(container.innerHTML.includes('No files selected yet.')) container.innerHTML = '';
-        const div = document.createElement('div');
-        div.style.cssText = "background:var(--bg); border:1px solid var(--border); padding:15px; border-radius:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;";
-        div.innerHTML = `
-            <div style="width:100%; font-size:12px; font-weight:700; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;">📁 ${{fileName}}</div>
-            <input type="hidden" name="video_id" value="${{fileId}}">
-            <input type="text" name="video_heading" placeholder="Group Name" class="s-input" style="margin-bottom:0; flex:1; min-width:120px; padding:10px;" required>
-            <input type="text" name="video_name" placeholder="Quality" class="s-input" style="margin-bottom:0; flex:1; min-width:100px; padding:10px; color:var(--accent);" required>
-            <button type="button" onclick="this.parentElement.remove()" style="background:var(--bg3); color:var(--muted); border:1px solid var(--border); padding:10px 15px; border-radius:6px; cursor:pointer; font-weight:bold;">✖</button>`;
-        container.appendChild(div);
-    }}
-    </script>
-    '''
+    ''' + POST_WIZARD_JS
     return build_page("Edit Post", html_content, "", "posts", role)
 
 # ─────────────────────────────────────────────────────────
